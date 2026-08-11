@@ -146,37 +146,46 @@ npm run build   # → web/dist (manifest + 서비스워커 포함)
 > 투명 영역이 있으면 아이콘이 작게 떠 보이기 때문에 **배경을 꽉 채우고**, 링·글자는 안전영역
 > (중앙 80% 원) 안에 두며, 잘려도 되는 모서리만 밖으로 나가게 한다.
 
-### 2) 배포 — Cloudflare Pages
+### 2) 배포 — Cloudflare Workers (GitHub 연동)
 
-이 저장소는 git 저장소가 아니므로 **Wrangler 로 직접 업로드**한다 (GitHub 연동 불필요).
+**`git push` 하면 Cloudflare 가 알아서 빌드·배포한다.** 따로 할 일이 없다.
 
-```bash
-npx wrangler login          # 최초 1회 — 브라우저가 열리며 Cloudflare 로그인
-npm run deploy              # 빌드 + 업로드 (= build 후 wrangler pages deploy)
-```
+저장소: `github.com/dunkhoon/MeOS` (Private) → Cloudflare Workers 프로젝트 `meos` 에 연결돼 있다.
 
-끝나면 `https://meos.pages.dev` 같은 주소가 출력된다. 이후 배포는 `npm run deploy` 한 번이면 된다.
+Cloudflare 대시보드 설정 (최초 1회, 이미 완료):
 
-- **HTTPS 는 자동이다.** `*.pages.dev` 는 Cloudflare 가 인증서를 알아서 발급·갱신한다. 설정할 것이 없다.
-- **SPA 리다이렉트 설정 불필요.** 이 앱은 `HashRouter`(`/#/tasks`)를 써서 서버는 `index.html` 하나만
-  주면 되기 때문. (`BrowserRouter` 였다면 `_redirects` 파일이 필요했다.)
-- **환경변수 설정 불필요.** `VITE_*` 값은 `npm run build` 시점에 번들에 박히므로
-  Cloudflare 쪽에 따로 넣을 게 없다. 로컬에서 빌드해 올리는 구조다.
+| 항목 | 값 |
+|---|---|
+| Build command | `npm install && npm run build` |
+| Root directory | *(비움 — 모노레포라 루트에서 빌드)* |
+| 환경변수 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `ELECTRON_SKIP_BINARY_DOWNLOAD=1` |
+
+출력 경로는 대시보드가 아니라 **`wrangler.toml` 의 `[assets] directory`** 가 정한다.
+UI 가 자주 바뀌어 파일로 고정해 두는 편이 안전하다.
+
+> ⚠️ **Pages 가 아니라 Workers 다.** 배포 명령이 `wrangler deploy`(Workers)라
+> Pages 전용 설정(`pages_build_output_dir`)은 먹지 않는다. 주소도 `*.workers.dev` 다.
+
+- **HTTPS 자동** — Cloudflare 가 인증서를 발급·갱신한다.
+- **SPA 리다이렉트 불필요** — `HashRouter`(`/#/tasks`)라 서버는 `index.html` 하나만 주면 된다.
+  (`wrangler.toml` 에 `not_found_handling` 을 켜 두긴 했다 — 나중에 라우터를 바꿔도 안전하도록)
+- `ELECTRON_SKIP_BINARY_DOWNLOAD=1` 은 빌드에 필요 없는 200MB Electron 바이너리를 건너뛴다.
+
+로컬에서 바로 올리고 싶으면 `npm run deploy` (빌드 + `wrangler deploy`).
 
 > 공개 URL 이지만 데이터는 안전하다. 접속하면 로그인 화면만 보이고,
 > 실제 데이터는 Supabase 인증 + RLS(본인 데이터만 접근)로 보호된다.
 > 번들에 들어가는 `VITE_SUPABASE_ANON_KEY` 는 공개를 전제로 설계된 키다.
 
-### 3) Supabase 리다이렉트 URL 등록 (필수)
+### 3) Supabase 리다이렉트 URL 등록
 
 Supabase 대시보드 → Authentication → URL Configuration → **Redirect URLs** 에 배포 주소 추가:
 
 ```
-https://<배포주소>
+https://meos.<계정>.workers.dev
 ```
 
-이걸 빠뜨리면 매직링크를 눌러도 로그인이 안 된다. 로그인 코드는 `window.location.origin` 을
-쓰므로 배포 주소가 바뀌면 여기도 같이 바꿔야 한다.
+비밀번호 로그인만 쓴다면 없어도 되지만, **복구용 매직링크가 동작하려면 필요하다.**
 
 ### 4) 휴대폰에서 설치
 
