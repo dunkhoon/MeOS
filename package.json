@@ -1,0 +1,28 @@
+{
+  "name": "private-planner",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MeOS - 개인 통합 대시보드 (Personal OS)",
+  "workspaces": [
+    "web",
+    "electron"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w web",
+    "dev:sync": "node server/sync-server.mjs",
+    "dev": "concurrently -k -n web,sync -c cyan,magenta \"npm:dev:web\" \"npm:dev:sync\"",
+    "build": "npm run build -w web",
+    "preview": "npm run preview -w web",
+    "icons": "node scripts/make-pwa-icons.mjs",
+    "deploy": "npm run build && npx wrangler pages deploy web/dist --project-name=meos",
+    "sync": "node scripts/sync-intervals.mjs",
+    "google-auth": "node scripts/google-auth.mjs",
+    "desktop": "npm run start -w electron",
+    "desktop:dev": "concurrently -k -n web,sync,app -c cyan,magenta,green \"npm:dev:web\" \"npm:dev:sync\" \"wait-on tcp:127.0.0.1:5173 && npm run start -w electron\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "sharp": "^0.35.3",
+    "wait-on": "^8.0.1"
+  }
+}

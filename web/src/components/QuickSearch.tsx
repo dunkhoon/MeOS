@@ -1,0 +1,170 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+
+// Quick Search 오버레이 — 전역 단축키/트레이로 열림. 페이지·명령·바로가기·스니펫 검색.
+interface Item {
+  id: string
+  label: string
+  icon: string
+  hint: string
+  run: () => void | string | Promise<void | string>
+}
+
+export function QuickSearch() {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [sel, setSel] = useState(0)
+  const [snips, setSnips] = useState<{ id: string; title: string }[]>([])
+  const [toast, setToast] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    window.desktop?.onOpenQuickSearch(() => {
+      setQ('')
+      setSel(0)
+      setToast(null)
+      setOpen(true)
+      window.desktop?.snippets.list().then(setSnips).catch(() => setSnips([]))
+    })
+  }, [])
+
+  useEffect(() => {
+    if (open) window.setTimeout(() => inputRef.current?.focus(), 20)
+  }, [open])
+
+  const items = useMemo<Item[]>(() => {
+    const pages: Item[] = [
+      { id: 'p-dash', label: '대시보드', icon: '▦', hint: '페이지', run: () => navigate('/') },
+      { id: 'p-cal', label: '캘린더', icon: '▤', hint: '페이지', run: () => navigate('/calendar') },
+      { id: 'p-task', label: '업무', icon: '✔', hint: '페이지', run: () => navigate('/tasks') },
+      { id: 'p-ex', label: '운동', icon: '◠', hint: '페이지', run: () => navigate('/exercise') },
+      { id: 'p-rep', label: '리포트', icon: '▧', hint: '페이지', run: () => navigate('/report') },
+      { id: 'p-set', label: '설정', icon: '⚙', hint: '페이지', run: () => navigate('/settings') },
+    ]
+    const cmds: Item[] = [
+      {
+        id: 'c-sync',
+        label: '운동 동기화 (intervals.icu)',
+        icon: '↻',
+        hint: '명령',
+        run: async () => {
+          setToast('동기화 중…')
+          try {
+            const res = await fetch('/api/sync/intervals', { method: 'POST' })
+            return res.ok ? '동기화 완료' : '동기화 실패'
+          } catch {
+            return '동기화 실패 (서버 미실행?)'
+          }
+        },
+      },
+      { id: 'c-logout', label: '로그아웃', icon: '⏻', hint: '명령', run: () => void supabase.auth.signOut() },
+    ]
+    let shortcuts: Item[] = []
+    try {
+      const list = JSON.parse(localStorage.getItem('pp:shortcuts') || '[]') as {
+        id: string
+        name: string
+        target: string
+        emoji: string | null
+      }[]
+      shortcuts = list.map((s) => ({
+        id: 's-' + s.id,
+        label: s.name,
+        icon: s.emoji || '🔗',
+        hint: '바로가기',
+        run: () => void window.desktop?.openShortcut(s.target),
+      }))
+    } catch {
+      /* ignore */
+    }
+    const snippets: Item[] = snips.map((s) => ({
+      id: 'n-' + s.id,
+      label: s.title,
+      icon: '📋',
+      hint: '스니펫 복사',
+      run: async () => {
+        const r = await window.desktop?.snippets.copy(s.id)
+        return r?.ok ? `복사됨: ${s.title}` : '복사 실패'
+      },
+    }))
+    return [...pages, ...cmds, ...shortcuts, ...snippets]
+  }, [snips, navigate])
+
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase()
+    if (!query) return items
+    return items
+      .filter((it) => it.label.toLowerCase().includes(query))
+      .sort((a, b) => {
+        const as = a.label.toLowerCase().startsWith(query) ? 0 : 1
+        const bs = b.label.toLowerCase().startsWith(query) ? 0 : 1
+        return as - bs
+      })
+  }, [q, items])
+
+  useEffect(() => {
+    setSel(0)
+  }, [q])
+
+  if (!open) return null
+
+  const close = () => setOpen(false)
+  const exec = async (it?: Item) => {
+    const target = it ?? filtered[sel]
+    if (!target) return
+    const res = await target.run()
+    if (typeof res === 'string') {
+      setToast(res)
+      window.setTimeout(close, 1100)
+    } else {
+      close()
+    }
+  }
+
+  return (
+    <div className="qs-overlay" onClick={close}>
+      <div className="qs" onClick={(e) => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          className="qs-input"
+          placeholder="검색 — 페이지 · 명령 · 바로가기 · 스니펫"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setSel((s) => Math.min(s + 1, filtered.length - 1))
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setSel((s) => Math.max(s - 1, 0))
+            } else if (e.key === 'Enter') {
+              e.preventDefault()
+              void exec()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              close()
+            }
+          }}
+        />
+        <div className="qs-list">
+          {filtered.length === 0 && <div className="qs-empty">결과 없음</div>}
+          {filtered.map((it, i) => (
+            <button
+              key={it.id}
+              className={`qs-item ${i === sel ? 'active' : ''}`}
+              onMouseMove={() => setSel(i)}
+              onClick={() => void exec(it)}
+            >
+              <span className="qs-icon">{it.icon}</span>
+              <span className="qs-label">{it.label}</span>
+              <span className="qs-hint">{it.hint}</span>
+            </button>
+          ))}
+        </div>
+        {toast && <div className="qs-toast">{toast}</div>}
+      </div>
+    </div>
+  )
+}

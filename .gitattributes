@@ -1,0 +1,11 @@
+# 줄바꿈 정규화 — 저장소에는 LF 로 저장하고, 체크아웃 시 OS 에 맞게 변환한다.
+# (Cloudflare 빌드는 Linux, 개발은 Windows 라 명시해 두는 편이 안전하다)
+* text=auto
+
+# Windows 배치 파일은 CRLF 여야 한다
+*.bat text eol=crlf
+
+# 바이너리 — 변환하지 않는다
+*.png binary
+*.jpg binary
+*.ico binary

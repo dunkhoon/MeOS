@@ -1,0 +1,25 @@
+# Secrets / local env
+.env
+.env.local
+.env.*.local
+.secrets/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+web/dev-dist/
+
+# 도구 상태 (세션·비용 기록 등 — 저장소에 들어갈 이유 없음)
+.omc/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
