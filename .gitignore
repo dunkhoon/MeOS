@@ -31,3 +31,6 @@ Thumbs.db
 
 # Edge Function 시크릿 (supabase secrets set --env-file 용, .env.local 에서 복사됨)
 supabase/.env.secrets
+
+# Supabase CLI 로컬 상태 (link 하면 생김)
+supabase/.temp/
