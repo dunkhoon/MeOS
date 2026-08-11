@@ -136,7 +136,8 @@ body {
   gap: 12px;
   margin-top: 20px;
 }
-input[type='email'] {
+input[type='email'],
+input[type='password'] {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -144,7 +145,8 @@ input[type='email'] {
   color: var(--text);
   font-size: 15px;
 }
-input[type='email']:focus {
+input[type='email']:focus,
+input[type='password']:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -2378,4 +2380,11 @@ code {
   .bts-date {
     display: none;
   }
+}
+
+/* 로그인 — 대체 로그인 방식 전환 링크 */
+.login-alt {
+  margin-top: 4px;
+  font-size: 12px;
+  align-self: center;
 }

@@ -1,4 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../auth/AuthProvider'
 
 export default function Settings() {
   const isDesktop = !!window.desktop?.isDesktop
@@ -6,8 +8,12 @@ export default function Settings() {
     <div className="page">
       <header className="page-head">
         <h2>설정</h2>
-        <p className="muted">Quick Search · 스니펫 · BTS 연결 (PC 전용)</p>
+        <p className="muted">계정 · Quick Search · 스니펫 · BTS 연결</p>
       </header>
+
+      {/* 계정은 모바일에서도 보여야 한다 — 비밀번호를 여기서 정한다 */}
+      <AccountSetting />
+
       {isDesktop ? (
         <>
           <P4Setting />
@@ -16,8 +22,79 @@ export default function Settings() {
           <SnippetManager />
         </>
       ) : (
-        <div className="card">이 설정은 데스크톱 앱에서만 사용할 수 있어요.</div>
+        <div className="card muted">Quick Search · 스니펫 · BTS · Perforce 설정은 데스크톱 앱에서만 사용할 수 있어요.</div>
       )}
+    </div>
+  )
+}
+
+// ── 계정 (비밀번호) ─────────────────────────────────────────
+// 매직링크로 만든 계정에는 비밀번호가 없다. 여기서 한 번 정하면
+// 이후 모든 기기에서 이메일+비밀번호로 로그인할 수 있다.
+function AccountSetting() {
+  const { session } = useAuth()
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const tooShort = pw.length > 0 && pw.length < 8
+  const mismatch = pw2.length > 0 && pw !== pw2
+  const canSave = pw.length >= 8 && pw === pw2 && !busy
+
+  const save = async () => {
+    setBusy(true)
+    setErr(null)
+    setMsg(null)
+    const { error } = await supabase.auth.updateUser({ password: pw })
+    setBusy(false)
+    if (error) {
+      setErr(error.message)
+      return
+    }
+    setPw('')
+    setPw2('')
+    setMsg('비밀번호를 저장했습니다. 이제 다른 기기에서 이메일 + 비밀번호로 로그인할 수 있어요.')
+  }
+
+  return (
+    <div className="card setting-card">
+      <h3 className="card-title">계정</h3>
+      <p className="muted small">
+        로그인 계정: <code>{session?.user.email ?? '-'}</code>
+      </p>
+      <p className="muted small">
+        비밀번호를 정해두면 메일을 기다리지 않고 바로 로그인할 수 있습니다. 매직링크로 만든 계정은 처음엔 비밀번호가
+        없으니, <b>이 기기에서 한 번 설정</b>해 두세요.
+      </p>
+
+      <div className="snippet-form">
+        <label>새 비밀번호 (8자 이상)</label>
+        <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" />
+        {tooShort && <p className="error small">8자 이상이어야 합니다.</p>}
+
+        <label>비밀번호 확인</label>
+        <input
+          type="password"
+          value={pw2}
+          onChange={(e) => setPw2(e.target.value)}
+          placeholder="••••••••"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canSave) void save()
+          }}
+        />
+        {mismatch && <p className="error small">두 번 입력한 비밀번호가 다릅니다.</p>}
+
+        {err && <p className="error small">{err}</p>}
+        {msg && <p className="muted small">{msg}</p>}
+
+        <div className="modal-actions">
+          <button onClick={() => void save()} disabled={!canSave}>
+            {busy ? '저장 중…' : '비밀번호 저장'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

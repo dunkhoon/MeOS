@@ -33,6 +33,9 @@ INTERVALS_API_KEY=...            # intervals.icu API key (서버/동기화용)
 2. **인증 URL 등록**: Authentication → URL Configuration
    - Site URL: `http://localhost:5173`
    - Redirect URLs 에 `http://localhost:5173` 추가 (배포 후 배포 URL도 추가)
+3. **첫 로그인**: 계정이 없으면 로그인 화면에서 *메일 링크로 로그인* 으로 한 번 들어간 뒤,
+   **설정 → 계정**에서 비밀번호를 정한다. 이후로는 이메일 + 비밀번호로 로그인한다.
+   (Supabase 기본 메일은 시간당 2~4통 제한이라 매직링크는 복구용으로만 쓴다)
 
 ### 업무 탭 — Redmine / JIRA 연결 (선택, PC 전용)
 
