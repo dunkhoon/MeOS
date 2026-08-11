@@ -98,8 +98,25 @@ interface SubmitLogResult {
   historyCount?: number
 }
 
+interface AppInfo {
+  /** 지금 띄우고 있는 주소 */
+  url: string
+  /** 설정에 저장된 주소 (없으면 빈 문자열) */
+  savedUrl: string
+  /** 저장값 없이 MEOS_APP_URL 환경변수/.env.local 로 정해졌는지 */
+  fromEnv: boolean
+  /** 개발 모드 — 저장값을 무시하고 Vite dev 서버를 쓴다 */
+  isDev: boolean
+  version: string
+}
+
 interface DesktopBridge {
   isDesktop: boolean
+  app: {
+    getInfo: () => Promise<AppInfo>
+    setUrl: (url: string) => Promise<{ ok: boolean; url?: string; error?: string }>
+    reload: () => Promise<{ ok: boolean }>
+  }
   onAuthCallback: (cb: (url: string) => void) => void
   openShortcut: (target: string) => Promise<{ ok: boolean; error?: string }>
   onOpenQuickSearch: (cb: () => void) => void

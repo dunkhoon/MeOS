@@ -14,6 +14,8 @@
     "build": "npm run build -w web",
     "preview": "npm run preview -w web",
     "icons": "node scripts/make-pwa-icons.mjs",
+    "icons:win": "node scripts/make-app-ico.mjs",
+    "dist:win": "npm run icons:win && node scripts/prefetch-wincodesign.mjs && npm run dist -w electron",
     "deploy": "npm run build && npx wrangler deploy",
     "sync": "node scripts/sync-intervals.mjs",
     "google-auth": "node scripts/google-auth.mjs",

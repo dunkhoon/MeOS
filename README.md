@@ -7,7 +7,7 @@
 ```
 MeOS/  (저장소 폴더는 PrivatePlanner)
 ├─ web/         React + TS + Vite (PC·모바일 공용 UI)
-├─ electron/    데스크톱 셸 (+ 회사 업무 Redmine/JIRA 실시간 조회 담당)
+├─ electron/    데스크톱 셸 — 화면은 배포된 웹에서 불러오고, 창·트레이·p4·BTS 만 담당
 ├─ supabase/    DB 스키마 마이그레이션
 ├─ docs/        설계 문서
 └─ .env.local   시크릿 (git 제외) — 아래 참고
@@ -110,6 +110,48 @@ npm run dev                       # (터미널 1) Vite dev 서버
 npm run desktop                   # (터미널 2) Electron 창 실행
 ```
 
+데스크톱 앱은 **화면을 자체적으로 들고 있지 않다.** 셸(창·트레이·단축키·p4·BTS)만 담고,
+보여줄 화면은 주소로 불러온다.
+
+| 실행 방식 | 불러오는 곳 |
+|---|---|
+| `npm run desktop` (저장소에서) | `http://localhost:5173` — Vite dev 서버 |
+| 설치한 exe | **설정에 저장된 배포 주소** → 없으면 `.env.local` 의 `MEOS_APP_URL` → 그래도 없으면 주소 입력 화면 |
+
+`MEOS_APP_URL` 환경변수를 주면 어느 쪽이든 그걸 우선한다 (일회성 테스트용).
+
+> preload 는 주소와 무관하게 붙으므로, 원격 화면에서도 `window.desktop`(BTS · Perforce · 스니펫 ·
+> 트레이 · 전역 단축키)이 그대로 동작한다. 대신 그 브리지가 원격 페이지에 열려 있으므로
+> 창이 **저장된 주소 밖으로 이동하지 못하게 막아** 두었다 (외부 링크는 기본 브라우저로 넘긴다).
+
+### exe 만들기 (Windows)
+
+```bash
+npm run dist:win     # → dist-desktop/
+```
+
+| 결과물 | 용도 |
+|---|---|
+| `MeOS-Setup-0.1.0.exe` | 설치본 (시작 메뉴 등록, `privateplanner://` 딥링크 등록) |
+| `MeOS-0.1.0-portable.exe` | 설치 없이 바로 실행 |
+
+**첫 실행 때 배포 주소를 한 번 입력**하면 이후로는 바로 열린다. 설정 → **앱 주소** 에서 바꿀 수 있다.
+
+- 설정값·스니펫·토큰은 `%APPDATA%\@pp\desktop` 에 있어 **개발 모드와 exe 가 같은 것을 쓴다** (다시 설정할 필요 없음).
+- `.env.local` 폴백이 필요하면 exe 옆이나 `%APPDATA%\@pp\desktop` 에 두면 된다.
+- **화면을 고쳤을 땐 exe 를 다시 만들 필요가 없다** — `git push` 후 배포가 끝나면 앱만 다시 열면 된다.
+  exe 재빌드는 `electron/` 안(창·트레이·p4·BTS)을 고쳤을 때만 필요하다.
+
+> ⚠️ **운동 동기화 버튼은 exe 에서 동작하지 않는다.** intervals.icu 동기화는 아직 로컬 서버
+> (`npm run dev` 가 같이 띄우는 `server/sync-server.mjs`)에 붙어 있어서, 배포된 화면에는 `/api` 가 없다.
+> 지금은 `sync-intervals.bat` 을 쓰면 되고, 버튼을 누르면 그렇게 안내한다.
+> 제대로 고치려면 동기화를 Supabase Edge Function 으로 옮겨야 한다 (모바일에서도 같은 제약).
+
+> `npm run dist:win` 은 아이콘(`icon.ico`) 생성 → winCodeSign 캐시 준비 → 패키징 순으로 돈다.
+> 가운데 단계는 Windows 전용 우회다: winCodeSign 아카이브에 macOS 심볼릭 링크가 들어 있는데
+> Windows 는 개발자 모드 없이 심링크를 못 만들어 압축 해제가 통째로 실패한다.
+> `scripts/prefetch-wincodesign.mjs` 가 `darwin/` 만 빼고 직접 풀어 캐시에 넣는다.
+
 ## 모바일 (Android) — PWA
 
 웹 코드를 그대로 쓴다. 별도 앱 코드가 없고, 빌드 결과물(`web/dist`)을 정적 호스팅에 올린 뒤
@@ -172,6 +214,8 @@ UI 가 자주 바뀌어 파일로 고정해 두는 편이 안전하다.
 - `ELECTRON_SKIP_BINARY_DOWNLOAD=1` 은 빌드에 필요 없는 200MB Electron 바이너리를 건너뛴다.
 
 로컬에서 바로 올리고 싶으면 `npm run deploy` (빌드 + `wrangler deploy`).
+
+> 데스크톱 앱도 이 주소를 띄우므로 **한 번 배포하면 PC·모바일이 같이 갱신된다.**
 
 > 공개 URL 이지만 데이터는 안전하다. 접속하면 로그인 화면만 보이고,
 > 실제 데이터는 Supabase 인증 + RLS(본인 데이터만 접근)로 보호된다.

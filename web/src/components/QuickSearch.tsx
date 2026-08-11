@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { runIntervalsSync } from '../lib/sync'
 
 // Quick Search 오버레이 — 전역 단축키/트레이로 열림. 페이지·명령·바로가기·스니펫 검색.
 interface Item {
@@ -52,10 +53,10 @@ export function QuickSearch() {
         run: async () => {
           setToast('동기화 중…')
           try {
-            const res = await fetch('/api/sync/intervals', { method: 'POST' })
-            return res.ok ? '동기화 완료' : '동기화 실패'
-          } catch {
-            return '동기화 실패 (서버 미실행?)'
+            const r = await runIntervalsSync()
+            return `동기화 완료 · 활동 ${r.activities}`
+          } catch (e) {
+            return e instanceof Error ? e.message : '동기화 실패'
           }
         },
       },

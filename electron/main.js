@@ -26,6 +26,8 @@ let mainWindow = null
 let tray = null
 let pendingAuthUrl = null
 let isQuitting = false
+/** 지금 창에 띄운 앱 주소 (내비게이션 허용 판정 기준). */
+let loadedUrl = ''
 
 // ── 설정 / 스니펫 저장 (userData) ──────────────────────────
 function cfgPath() {
@@ -87,19 +89,77 @@ function dec(v) {
   }
 }
 
-/** 개발 중에는 저장소 루트 .env.local 을 폴백으로 읽는다 (설정 화면 입력값이 우선). */
-function readEnvLocal() {
-  const p = path.join(__dirname, '..', '.env.local')
-  const out = {}
+/**
+ * .env.local 을 폴백으로 읽는다 (설정 화면 입력값이 우선).
+ * 개발이면 저장소 루트, 패키지본이면 exe 옆이나 userData 에 놓아 쓴다.
+ * asar 안에서는 `__dirname/..` 이 resources/ 라 저장소 루트를 못 찾으므로 후보를 여러 곳 본다.
+ */
+function envCandidates() {
+  const list = []
+  if (process.env.MEOS_ENV_FILE) list.push(process.env.MEOS_ENV_FILE)
   try {
-    for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
-      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)
-      if (m) out[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
-    }
+    list.push(path.join(app.getPath('userData'), '.env.local'))
+    list.push(path.join(path.dirname(app.getPath('exe')), '.env.local'))
   } catch {
-    /* 없으면 무시 */
+    /* app 준비 전이면 건너뛴다 */
+  }
+  list.push(path.join(__dirname, '..', '.env.local')) // 저장소 루트 (개발)
+  return list
+}
+
+function readEnvLocal() {
+  const out = {}
+  for (const p of envCandidates()) {
+    try {
+      for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
+        if (line.trim().startsWith('#')) continue
+        const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)
+        // 앞 후보가 이긴다 (userData > exe 옆 > 저장소 루트)
+        if (m && !(m[1] in out)) out[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
+      }
+    } catch {
+      /* 없으면 다음 후보 */
+    }
   }
   return out
+}
+
+// ── 앱을 어디서 불러올지 ───────────────────────────────────
+// 데스크톱 셸은 화면을 직접 들고 있지 않고 배포된 웹(Cloudflare)을 그대로 띄운다.
+// UI 를 고치면 push → 재배포 → 앱 재시작만 하면 반영된다 (exe 재빌드 불필요).
+//
+//   개발(비패키지)  : 항상 Vite dev 서버. MEOS_APP_URL 로만 덮어쓴다.
+//   패키지(exe)     : 저장된 주소 → .env.local(MEOS_APP_URL) → 없으면 설정 화면.
+function normalizeUrl(raw) {
+  let s = String(raw || '').trim()
+  if (!s) return ''
+  if (!/^https?:\/\//i.test(s)) {
+    // 스킴을 안 적으면 https 로 본다 — 단 로컬 주소는 인증서가 없으니 http 로
+    s = (/^(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(s) ? 'http://' : 'https://') + s
+  }
+  try {
+    const u = new URL(s)
+    // new URL 은 'https://!!!' 같은 것도 통과시킨다 — 호스트 모양을 한 번 더 본다
+    if (!/^[a-z0-9.\-[\]:]+$/i.test(u.hostname)) return ''
+    return u.toString().replace(/\/$/, '')
+  } catch {
+    return ''
+  }
+}
+
+function resolveAppUrl() {
+  const override = normalizeUrl(process.env.MEOS_APP_URL)
+  if (override) return override
+  if (isDev) return DEV_URL
+  return normalizeUrl(getConfig().appUrl) || normalizeUrl(readEnvLocal().MEOS_APP_URL) || ''
+}
+
+function sameOrigin(a, b) {
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    return false
+  }
 }
 
 /** 저장된 설정 + .env.local 폴백을 합쳐 실제 조회에 쓸 값을 만든다. */
@@ -168,6 +228,30 @@ ipcMain.handle('open-shortcut', async (_event, target) => {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
+})
+
+// ── 앱 주소 (배포된 웹을 띄운다) ───────────────────────────
+ipcMain.handle('app:getInfo', () => {
+  const env = readEnvLocal()
+  return {
+    url: resolveAppUrl(),
+    savedUrl: normalizeUrl(getConfig().appUrl),
+    fromEnv: !getConfig().appUrl && !!(process.env.MEOS_APP_URL || env.MEOS_APP_URL),
+    isDev, // 개발 모드에선 저장값을 무시하고 dev 서버를 쓴다
+    version: app.getVersion(),
+  }
+})
+
+ipcMain.handle('app:setUrl', (_e, raw) => {
+  const url = normalizeUrl(raw)
+  if (raw && !url) return { ok: false, error: '주소 형식이 올바르지 않습니다.' }
+  writeJson(cfgPath(), { ...getConfig(), appUrl: url })
+  return { ok: true, url }
+})
+
+ipcMain.handle('app:reload', () => {
+  loadApp()
+  return { ok: true }
 })
 
 ipcMain.handle('settings:getHotkey', () => getHotkey())
@@ -589,6 +673,28 @@ function flushAuthUrl() {
   }
 }
 
+// ── 앱 로드 / 안내 화면 ────────────────────────────────────
+/** 설정된 주소를 창에 띄운다. 주소가 없으면 설정 화면(shell.html)으로 간다. */
+function loadApp() {
+  if (!mainWindow) return
+  const url = resolveAppUrl()
+  loadedUrl = url
+  if (!url) {
+    showShell(null, '')
+    return
+  }
+  mainWindow.loadURL(url)
+}
+
+/** 주소 입력 / 오류 안내용 로컬 화면. preload 가 붙어 있어 window.desktop 을 그대로 쓴다. */
+function showShell(error, url) {
+  if (!mainWindow) return
+  void mainWindow.loadFile(path.join(__dirname, 'shell.html'), {
+    // 개발 모드에선 주소를 저장해도 dev 서버를 쓰므로, 입력칸 대신 안내만 보여준다
+    query: { error: error || '', url: url || resolveAppUrl() || '', dev: isDev ? '1' : '' },
+  })
+}
+
 // ── 메인 창 ────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -605,16 +711,27 @@ function createWindow() {
     },
   })
 
-  if (isDev) {
-    mainWindow.loadURL(DEV_URL)
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'web', 'dist', 'index.html'))
-  }
+  loadApp()
 
+  // 새 창 요청: 같은 앱이면 허용, 나머지는 기본 브라우저로 넘긴다
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://localhost') || url.startsWith('file://')) return { action: 'allow' }
+    if (url.startsWith('file://') || (loadedUrl && sameOrigin(url, loadedUrl))) return { action: 'allow' }
     void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // 원격 페이지에 window.desktop(=p4 실행·파일 열기)이 노출되므로,
+  // 창이 앱 주소 밖으로 흘러가지 못하게 막는다. 외부 링크는 브라우저로 보낸다.
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith('file://') || (loadedUrl && sameOrigin(url, loadedUrl))) return
+    e.preventDefault()
+    void shell.openExternal(url)
+  })
+
+  // 주소를 못 열었을 때(오프라인·오타·배포 중) 빈 창 대신 안내 화면을 띄운다
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    if (!isMainFrame || code === -3) return // -3 = ERR_ABORTED (새로고침 등, 오류 아님)
+    showShell(`${desc || '연결 실패'} (${code})`, url)
   })
 
   mainWindow.webContents.on('did-finish-load', flushAuthUrl)

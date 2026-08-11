@@ -4,6 +4,13 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
 
+  // 앱 주소 — 데스크톱 셸은 배포된 웹(Cloudflare)을 띄운다
+  app: {
+    getInfo: () => ipcRenderer.invoke('app:getInfo'),
+    setUrl: (url) => ipcRenderer.invoke('app:setUrl', url),
+    reload: () => ipcRenderer.invoke('app:reload'),
+  },
+
   // 매직링크 딥링크(privateplanner://auth?code=...) 도착 시 콜백
   onAuthCallback: (cb) => {
     ipcRenderer.on('auth-callback', (_event, url) => cb(url))

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>MeOS</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #0e0f13;
+        color: #e6e8ee;
+        font: 14px/1.6 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      /* 네이티브 타이틀바를 숨겨 뒀으므로 여기서 드래그·닫기를 제공해야 한다 */
+      .bar {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        -webkit-app-region: drag;
+        border-bottom: 1px solid #1c1f27;
+        flex: none;
+      }
+      .bar button {
+        -webkit-app-region: no-drag;
+        width: 44px;
+        height: 36px;
+        border: 0;
+        background: transparent;
+        color: #9aa1b1;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .bar button:hover { background: #1c1f27; color: #e6e8ee; }
+      .bar button.x:hover { background: #c0392b; color: #fff; }
+
+      main {
+        flex: 1;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        overflow: auto;
+      }
+      .card {
+        width: 100%;
+        max-width: 460px;
+        background: #14161d;
+        border: 1px solid #232733;
+        border-radius: 14px;
+        padding: 28px;
+      }
+      h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.5px; }
+      .muted { color: #8b92a4; font-size: 13px; margin: 0 0 20px; }
+      label { display: block; font-size: 12px; color: #9aa1b1; margin-bottom: 6px; }
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 9px;
+        border: 1px solid #2a2f3d;
+        background: #0e0f13;
+        color: #e6e8ee;
+        font: inherit;
+        font-size: 13px;
+      }
+      input:focus { outline: none; border-color: #4a7cff; }
+      button.go {
+        margin-top: 14px;
+        width: 100%;
+        padding: 11px;
+        border: 0;
+        border-radius: 9px;
+        background: #4a7cff;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.go:hover { background: #5d89ff; }
+      .err {
+        background: #2a1618;
+        border: 1px solid #5a2a2e;
+        color: #ff9aa2;
+        border-radius: 9px;
+        padding: 10px 12px;
+        font-size: 12.5px;
+        margin-bottom: 18px;
+        word-break: break-all;
+      }
+      .hint { margin-top: 16px; font-size: 12px; color: #6f7688; line-height: 1.7; }
+      code { background: #0e0f13; padding: 1px 5px; border-radius: 4px; color: #9aa1b1; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button id="min" title="최소화">&#8211;</button>
+      <button id="close" class="x" title="닫기">&#10005;</button>
+    </div>
+
+    <main>
+      <div class="card">
+        <h1>MeOS</h1>
+        <p class="muted">앱 주소를 불러오지 못했습니다.</p>
+
+        <div class="err" id="err" style="display: none"></div>
+
+        <label for="url">앱 주소 (Cloudflare 배포 주소)</label>
+        <input id="url" type="text" spellcheck="false" placeholder="https://meos.<계정>.workers.dev" />
+        <button class="go" id="go">저장하고 열기</button>
+
+        <p class="hint">
+          이 창은 배포된 웹을 그대로 띄웁니다. 주소를 한 번 저장하면 다음부터 바로 열립니다.<br />
+          exe 옆이나 <code>.env.local</code> 에 <code>MEOS_APP_URL=</code> 로 넣어 둬도 됩니다.
+        </p>
+      </div>
+    </main>
+
+    <script>
+      const q = new URLSearchParams(location.search)
+      const err = q.get('error')
+      const url = q.get('url') || ''
+      const isDev = q.get('dev') === '1'
+
+      if (err) {
+        const box = document.getElementById('err')
+        box.textContent = (url ? url + '\n' : '') + err
+        box.style.display = 'block'
+        document.querySelector('.muted').textContent = '주소는 있지만 연결하지 못했습니다. 인터넷 연결과 주소를 확인하세요.'
+      }
+
+      const input = document.getElementById('url')
+      input.value = url
+
+      if (isDev) {
+        // 개발 모드는 저장된 주소를 무시하고 dev 서버를 쓴다 — 입력칸을 보여주면 오해를 부른다
+        document.querySelector('.muted').textContent = '개발 모드입니다. Vite dev 서버가 꺼져 있습니다.'
+        document.querySelector('label[for="url"]').remove()
+        input.remove()
+        const btn = document.getElementById('go')
+        btn.textContent = '다시 시도'
+        document.querySelector('.hint').innerHTML =
+          '다른 터미널에서 <code>npm run dev</code> 를 실행한 뒤 다시 시도하세요.<br />' +
+          '개발 모드에서는 저장된 배포 주소 대신 항상 <code>localhost:5173</code> 을 씁니다.'
+      } else {
+        input.focus()
+        input.select()
+      }
+
+      async function go() {
+        if (!isDev) {
+          const r = await window.desktop?.app.setUrl(input.value)
+          if (r && !r.ok) {
+            const box = document.getElementById('err')
+            box.textContent = r.error
+            box.style.display = 'block'
+            return
+          }
+        }
+        await window.desktop?.app.reload()
+      }
+
+      document.getElementById('go').addEventListener('click', go)
+      if (!isDev) {
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') go()
+        })
+      }
+      document.getElementById('min').addEventListener('click', () => window.desktop?.win.minimize())
+      document.getElementById('close').addEventListener('click', () => window.desktop?.win.quit())
+    </script>
+  </body>
+</html>

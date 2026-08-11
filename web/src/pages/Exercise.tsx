@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import dayjs from 'dayjs'
+import { runIntervalsSync } from '../lib/sync'
 import {
   ZONE_COLORS,
   activityTypes,
@@ -86,11 +87,9 @@ export default function Exercise() {
     setSyncing(true)
     setSyncMsg(null)
     try {
-      const res = await fetch('/api/sync/intervals', { method: 'POST' })
-      const body = (await res.json()) as { ok: boolean; error?: string; activities?: number; wellness?: number; races?: number }
-      if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`)
+      const r = await runIntervalsSync()
       await load()
-      setSyncMsg(`동기화 완료 · 활동 ${body.activities} · 웰니스 ${body.wellness} · 대회 ${body.races}`)
+      setSyncMsg(`동기화 완료 · 활동 ${r.activities} · 웰니스 ${r.wellness} · 대회 ${r.races}`)
     } catch (e) {
       setSyncMsg('동기화 실패: ' + (e instanceof Error ? e.message : String(e)))
     } finally {

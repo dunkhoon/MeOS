@@ -16,6 +16,7 @@ export default function Settings() {
 
       {isDesktop ? (
         <>
+          <AppUrlSetting />
           <P4Setting />
           <BtsSetting />
           <HotkeySetting />
@@ -93,6 +94,76 @@ function AccountSetting() {
           <button onClick={() => void save()} disabled={!canSave}>
             {busy ? '저장 중…' : '비밀번호 저장'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── 앱 주소 (데스크톱 전용) ─────────────────────────────────
+// 데스크톱 앱은 화면을 자체적으로 들고 있지 않고 배포된 웹을 그대로 띄운다.
+// 그래서 UI 를 고쳐도 exe 를 다시 만들 필요가 없다 — 재배포 후 앱만 다시 열면 된다.
+function AppUrlSetting() {
+  const [info, setInfo] = useState<AppInfo | null>(null)
+  const [url, setUrl] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.desktop?.app.getInfo().then((i) => {
+      setInfo(i)
+      setUrl(i.savedUrl || i.url)
+    })
+  }, [])
+
+  const save = async (reload: boolean) => {
+    setErr(null)
+    setMsg(null)
+    const r = await window.desktop?.app.setUrl(url)
+    if (!r?.ok) {
+      setErr(r?.error ?? '저장 실패')
+      return
+    }
+    if (reload) {
+      await window.desktop?.app.reload() // 창이 새 주소로 다시 로드된다
+      return
+    }
+    setMsg('저장했습니다. 다음에 앱을 열 때 이 주소로 접속합니다.')
+  }
+
+  return (
+    <div className="card setting-card">
+      <h3 className="card-title">앱 주소</h3>
+      <p className="muted small">
+        데스크톱 앱은 배포된 웹을 그대로 띄웁니다. 화면을 고쳤을 땐 <code>git push</code> 후 배포가 끝나면
+        앱을 다시 열기만 하면 됩니다 (설치본을 다시 만들 필요 없음).
+      </p>
+      <p className="muted small">
+        지금 접속 중: <code>{info?.url || '…'}</code>
+        {info?.isDev && ' — 개발 모드라 Vite dev 서버를 쓰는 중입니다 (저장값은 설치본에서만 적용).'}
+        {info?.fromEnv && ' — MEOS_APP_URL 환경변수/.env.local 값을 쓰는 중입니다.'}
+      </p>
+
+      <div className="snippet-form">
+        <label>배포 주소</label>
+        <input
+          type="text"
+          spellCheck={false}
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://meos.<계정>.workers.dev"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void save(false)
+          }}
+        />
+        {err && <p className="error small">{err}</p>}
+        {msg && <p className="muted small">{msg}</p>}
+
+        <div className="modal-actions">
+          <button className="ghost-btn" onClick={() => void save(false)}>
+            저장
+          </button>
+          <button onClick={() => void save(true)}>저장하고 다시 열기</button>
         </div>
       </div>
     </div>

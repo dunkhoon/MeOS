@@ -12,6 +12,11 @@ dist/
 build/
 out/
 web/dev-dist/
+dist-desktop/
+
+# 앱 아이콘은 생성물이지만 커밋한다 — 없으면 electron-builder 가 조용히 기본 아이콘을 쓴다
+!electron/build/
+!electron/build/icon.ico
 
 # 도구 상태 (세션·비용 기록 등 — 저장소에 들어갈 이유 없음)
 .omc/
