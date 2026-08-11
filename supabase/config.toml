@@ -1,0 +1,6 @@
+project_id = "ggtnaqmmdjcfhkqzjhty"
+
+[functions.sync]
+# 앱에서는 로그인한 사용자의 JWT 로, cron/CLI 에서는 service_role 키로 부른다.
+# 둘 다 유효한 JWT 라 검증을 켜 둔 채로 동작한다 (익명 호출은 막힌다).
+verify_jwt = true

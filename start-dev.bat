@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo ============================================================
-echo   PrivatePlanner - dev (web + sync server)
+echo   MeOS - dev (web)
 echo   URL: http://localhost:5173
 echo ============================================================
 echo.
@@ -22,10 +22,10 @@ if not exist "node_modules\" (
   echo.
 )
 
-echo [cleanup] Freeing ports 5173 / 5174 / 9797 from previous runs...
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr LISTENING ^| findstr /C:":5173 " /C:":5174 " /C:":9797 "') do taskkill /F /PID %%p >nul 2>&1
+echo [cleanup] Freeing ports 5173 / 5174 from previous runs...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr LISTENING ^| findstr /C:":5173 " /C:":5174 "') do taskkill /F /PID %%p >nul 2>&1
 
-echo [RUN] Starting web + sync server. Open http://localhost:5173
+echo [RUN] Starting web. Open http://localhost:5173
 echo       Press Ctrl+C in this window to stop.
 echo.
 

@@ -251,9 +251,8 @@ Electron 은 창·트레이·전역 단축키와 로컬 권한이 필요한 일(
   진행 중인 업무·할 일·루틴은 클라우드에 있으므로 모바일에서도 그대로 보인다.
 - **러닝화(gear) = Garmin 별도 연동(후순위)**: intervals.icu엔 이 계정 Garmin 장비가 안 넘어옴(확인됨; gear는 Strava 경유만). → Garmin에서 직접 가져오되 **v1 이후로 미룸**. Garmin 공식 오픈 API 부재 → 비공식 라이브러리(`garminconnect`/`garth`) + 계정 인증 필요 → 구현 방식(Electron Node vs 파이썬 사이드카) 추후 결정.
 - 🔐 **API Key 취급**: `/athlete` 응답에 `icu_api_key` 평문 포함. 동기화 코드에서 해당 필드 로깅 금지, 개발 후 키 재발급 권장.
-- **intervals.icu 동기화 버튼이 배포본에서 안 된다**: 동기화가 아직 로컬 서버(`server/sync-server.mjs`)에 붙어 있어
-  `/api` 가 없는 배포 화면(=exe·모바일)에서는 실행되지 않는다. 현재는 `sync-intervals.bat` 으로 우회하고,
-  버튼은 그렇게 안내한다. **해결책은 §5 계획대로 Supabase Edge Function(cron) 으로 옮기는 것.**
+- ~~intervals.icu 동기화 버튼이 배포본에서 안 된다~~ → **해소됨(2026-08-11)**: 동기화를 Edge Function 으로 옮겨
+  앱·CLI·cron 이 모두 같은 함수를 부른다. 아래 "확정된 결정" 참고.
 
 **확정된 결정**
 - 로그인: **Supabase Auth 매직링크**(이메일 링크).
@@ -265,6 +264,11 @@ Electron 은 창·트레이·전역 단축키와 로컬 권한이 필요한 일(
 - 운동 화면: 러닝화(장비)는 기본 숨김·버튼으로 표시하고, 그 자리에 **Fitness(CTL/ATL/TSB) 그래프**를 기본 표시 (§3.1).
 - **데스크톱 앱은 배포된 웹을 띄운다**(2026-08-11). exe 는 `npm run dist:win` 으로 만들고(설치본 + 포터블),
   설정값은 개발 모드와 같은 `%APPDATA%\@pp\desktop` 을 공유한다. UI 수정은 재배포만으로 반영된다.
+- **동기화는 Edge Function 한 벌**(2026-08-11, `supabase/functions/sync`). 로컬 동기화 서버(`server/`)와
+  Node 판 코어(`scripts/sync-core.mjs`)는 **삭제**했다 — 같은 로직을 두 벌 들고 있으면 반드시 어긋난다.
+  CLI(`npm run sync`)도 이제 함수를 호출만 한다. 호출자는 세 갈래:
+  앱=사용자 JWT / CLI=service_role 키 / cron=Vault 에 넣은 service_role 키.
+  기본은 **최근 60일**만 당기고, 과거 전체는 `full` 옵션(운동 화면 "전체 기간" 버튼 · `npm run sync:full`).
 
 ## 10. 로드맵 (제안)
 

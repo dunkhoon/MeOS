@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo ============================================================
-echo   PrivatePlanner - intervals.icu -^> Supabase sync
+echo   MeOS - sync (Supabase Edge Function)
 echo ============================================================
 echo.
 

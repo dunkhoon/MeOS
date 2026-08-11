@@ -1,33 +1,40 @@
-// intervals.icu 동기화 호출.
+// intervals.icu + 구글 캘린더 동기화 호출.
 //
-// 동기화는 아직 로컬 전용이다 — 개발 서버(`npm run dev`)가 /api 를 로컬 동기화 서버로
-// 프록시할 때만 동작한다. 배포된 웹(Cloudflare)이나 그걸 띄우는 데스크톱 앱·모바일에서는
-// /api 가 없어서 SPA 폴백으로 index.html 이 돌아온다 → JSON 파싱 오류로 보이면 헷갈리므로
-// 여기서 걸러 "왜 안 되는지" 를 알려준다.
+// 실제 동기화는 Supabase Edge Function(`supabase/functions/sync`)에서 돈다.
+// 예전엔 PC 에서 띄우는 로컬 서버(`/api/sync/intervals`)에 붙어 있어서 개발 중에만 동작했다 —
+// 배포된 웹·모바일·데스크톱 exe 에서는 `/api` 가 없어 쓸 수 없었다. 이제 어디서 열든 같은 함수를 부른다.
 //
-// TODO: Supabase Edge Function(cron) 으로 옮기면 어디서나 동작하게 된다 (scripts/sync-core.mjs 주석 참고).
+// 인증은 로그인 세션의 JWT 로 자동으로 붙는다(supabase-js 가 처리) → 내 데이터만 동기화된다.
 
-export type SyncResult = { activities: number; wellness: number; races: number }
+import { supabase } from './supabase'
 
-export class SyncUnavailableError extends Error {
-  constructor() {
-    super('이 화면에서는 동기화를 실행할 수 없습니다. PC에서 sync-intervals.bat 을 실행하세요.')
-    this.name = 'SyncUnavailableError'
-  }
+export type SyncResult = { activities: number; wellness: number; races: number; events: number; full: boolean }
+
+export async function runIntervalsSync(opts: { full?: boolean } = {}): Promise<SyncResult> {
+  const { data, error } = await supabase.functions.invoke<SyncResult & { ok: boolean; error?: string }>('sync', {
+    body: { full: !!opts.full },
+  })
+
+  if (error) throw new Error(await readFunctionError(error))
+  if (!data?.ok) throw new Error(data?.error || '동기화에 실패했습니다.')
+  return data
 }
 
-export async function runIntervalsSync(): Promise<SyncResult> {
-  let res: Response
-  try {
-    res = await fetch('/api/sync/intervals', { method: 'POST' })
-  } catch {
-    throw new SyncUnavailableError() // 네트워크 자체가 막힘
+/**
+ * FunctionsHttpError 는 메시지가 "Edge Function returned a non-2xx status code" 뿐이라
+ * 무엇이 잘못됐는지 알 수 없다. 실제 원인은 응답 본문에 있으므로 꺼내 쓴다.
+ */
+async function readFunctionError(error: unknown): Promise<string> {
+  const ctx = (error as { context?: Response })?.context
+  if (ctx && typeof ctx.json === 'function') {
+    try {
+      const body = await ctx.json()
+      if (body?.error) return String(body.error)
+    } catch {
+      /* JSON 이 아니면 아래 기본 메시지로 */
+    }
+    if (ctx.status === 404) return '동기화 함수가 아직 배포되지 않았습니다 (npx supabase functions deploy sync).'
+    if (ctx.status === 401) return '로그인이 만료된 것 같습니다. 다시 로그인해 주세요.'
   }
-
-  // 동기화 서버가 없으면 index.html(HTML)이 200 으로 돌아온다 — 응답 타입으로 판별한다
-  if (!(res.headers.get('content-type') || '').includes('json')) throw new SyncUnavailableError()
-
-  const body = (await res.json()) as { ok: boolean; error?: string } & Partial<SyncResult>
-  if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`)
-  return { activities: body.activities ?? 0, wellness: body.wellness ?? 0, races: body.races ?? 0 }
+  return error instanceof Error ? error.message : '동기화에 실패했습니다.'
 }

@@ -8,7 +8,7 @@
 MeOS/  (저장소 폴더는 PrivatePlanner)
 ├─ web/         React + TS + Vite (PC·모바일 공용 UI)
 ├─ electron/    데스크톱 셸 — 화면은 배포된 웹에서 불러오고, 창·트레이·p4·BTS 만 담당
-├─ supabase/    DB 스키마 마이그레이션
+├─ supabase/    DB 스키마 마이그레이션 + Edge Function(동기화)
 ├─ docs/        설계 문서
 └─ .env.local   시크릿 (git 제외) — 아래 참고
 ```
@@ -30,12 +30,69 @@ INTERVALS_API_KEY=...            # intervals.icu API key (서버/동기화용)
 
 1. **스키마 적용**: 대시보드 → SQL Editor → `supabase/migrations/` 의 `.sql` 을 **번호순으로** 실행
    (`0001_init` → `0002_races` → `0003_hr_zones` → `0004_calendar` → `0005_work`). 모두 재실행 안전.
+   `0006_cron_sync` 는 자동 동기화용 — 아래 [동기화](#동기화-supabase-edge-function) 참고 (선택).
 2. **인증 URL 등록**: Authentication → URL Configuration
    - Site URL: `http://localhost:5173`
    - Redirect URLs 에 `http://localhost:5173` 추가 (배포 후 배포 URL도 추가)
 3. **첫 로그인**: 계정이 없으면 로그인 화면에서 *메일 링크로 로그인* 으로 한 번 들어간 뒤,
    **설정 → 계정**에서 비밀번호를 정한다. 이후로는 이메일 + 비밀번호로 로그인한다.
    (Supabase 기본 메일은 시간당 2~4통 제한이라 매직링크는 복구용으로만 쓴다)
+
+## 동기화 (Supabase Edge Function)
+
+intervals.icu(활동·웰니스·대회)와 구글 캘린더를 Supabase DB 로 당겨오는 일은
+**Edge Function `supabase/functions/sync`** 하나가 전담한다. 구현이 여기 한 벌뿐이고,
+앱의 새로고침 버튼·CLI·cron 이 모두 이걸 부른다.
+
+> 예전엔 PC 에서 로컬 서버(`server/sync-server.mjs`)를 띄워야 동작했다. 그래서 배포된 웹·모바일·exe
+> 에서는 `/api` 가 없어 쓸 수 없었다. 지금은 어디서 열든 같은 함수를 부른다.
+
+### 배포 (최초 1회 + 함수를 고칠 때마다)
+
+```bash
+npx supabase login                                  # 브라우저로 1회 인증
+npx supabase link --project-ref ggtnaqmmdjcfhkqzjhty
+npx supabase secrets set --env-file supabase/.env.secrets   # 시크릿 등록
+npm run functions:deploy                            # = supabase functions deploy sync
+```
+
+- `supabase/.env.secrets` 는 `.env.local` 에서 복사해 만든 파일이고 **git 에서 제외**돼 있다
+  (`INTERVALS_ATHLETE_ID` · `INTERVALS_API_KEY` · `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN`).
+- `SUPABASE_URL` · `SUPABASE_ANON_KEY` · `SUPABASE_SERVICE_ROLE_KEY` 는 **자동 주입**되므로 등록하지 않는다.
+
+### 실행 방법
+
+| 어디서 | 어떻게 | 인증 |
+|---|---|---|
+| 앱 (PC·모바일) | 운동 화면 **↻ 새로고침** | 로그인 세션 JWT → 내 데이터 |
+| CLI | `npm run sync` / `sync-intervals.bat` | `.env.local` 의 service_role 키 |
+| 자동 | pg_cron (아래) | Vault 에 넣어둔 service_role 키 |
+
+**평소엔 최근 60일치만** 당긴다 (자주 눌러도 가볍다). 과거 전체를 채우려면 운동 화면의
+**전체 기간** 버튼, 또는 `npm run sync:full`.
+
+### 자동 실행 (선택)
+
+PC 가 꺼져 있어도 최신을 유지하려면 `supabase/migrations/0006_cron_sync.sql` 을 SQL Editor 에서 실행한 뒤,
+키를 **Vault 에 한 번** 넣는다 (저장소에 키를 남기지 않으려고 이렇게 나눴다):
+
+```sql
+select vault.create_secret('<service_role 키>', 'sync_service_key');
+select vault.create_secret('https://ggtnaqmmdjcfhkqzjhty.supabase.co/functions/v1/sync', 'sync_function_url');
+```
+
+기본 주기는 **매시 정각**. 바꾸려면 `cron.schedule('meos-sync', '<cron 식>', …)` 만 다시 실행하면 된다.
+Vault 에 값이 없으면 cron 은 조용히 넘어가므로, 마이그레이션만 먼저 돌려도 깨지지 않는다.
+
+> 대시보드 **Integrations → Cron** 에서 GUI 로 잡아도 된다 (인증을 알아서 처리해 준다).
+
+### 함수 고칠 때
+
+`deno` 로 타입 검사와 로컬 실행이 된다 (Docker 불필요):
+
+```bash
+npx deno@2 check supabase/functions/sync/index.ts
+```
 
 ### 업무 탭 — Redmine / JIRA 연결 (선택, PC 전용)
 
@@ -102,6 +159,8 @@ npm run dev             # Vite dev 서버 → http://localhost:5173
 npm run build           # 타입체크 + 프로덕션 빌드
 ```
 
+> 동기화 서버를 따로 띄우지 않는다 — Edge Function 이 맡는다 (위 참고).
+
 ### 데스크톱(Electron)
 
 ```bash
@@ -142,10 +201,8 @@ npm run dist:win     # → dist-desktop/
 - **화면을 고쳤을 땐 exe 를 다시 만들 필요가 없다** — `git push` 후 배포가 끝나면 앱만 다시 열면 된다.
   exe 재빌드는 `electron/` 안(창·트레이·p4·BTS)을 고쳤을 때만 필요하다.
 
-> ⚠️ **운동 동기화 버튼은 exe 에서 동작하지 않는다.** intervals.icu 동기화는 아직 로컬 서버
-> (`npm run dev` 가 같이 띄우는 `server/sync-server.mjs`)에 붙어 있어서, 배포된 화면에는 `/api` 가 없다.
-> 지금은 `sync-intervals.bat` 을 쓰면 되고, 버튼을 누르면 그렇게 안내한다.
-> 제대로 고치려면 동기화를 Supabase Edge Function 으로 옮겨야 한다 (모바일에서도 같은 제약).
+> 운동 동기화 버튼은 exe·모바일에서도 동작한다 — Supabase Edge Function 을 부르기 때문이다
+> (위 [동기화](#동기화-supabase-edge-function) 참고).
 
 > `npm run dist:win` 은 아이콘(`icon.ico`) 생성 → winCodeSign 캐시 준비 → 패키징 순으로 돈다.
 > 가운데 단계는 Windows 전용 우회다: winCodeSign 아카이브에 macOS 심볼릭 링크가 들어 있는데

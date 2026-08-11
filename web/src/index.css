@@ -968,6 +968,24 @@ button:disabled {
   opacity: 0.85;
   cursor: default;
 }
+/* 새로고침(최근분) + 전체 기간 다시 받기 */
+.sync-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sync-actions .link-btn.small {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sync-actions .link-btn.small:hover:not(:disabled) {
+  color: var(--accent);
+}
+.sync-actions .link-btn.small:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .spinner {
   width: 13px;
   height: 13px;

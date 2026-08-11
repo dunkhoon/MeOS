@@ -44,9 +44,6 @@ export default defineConfig({
   envDir: path.resolve(import.meta.dirname, '..'),
   server: {
     port: 5173,
-    // /api → 로컬 동기화 서버(server/sync-server.mjs)
-    proxy: {
-      '/api': { target: 'http://127.0.0.1:9797', changeOrigin: true },
-    },
+    // 동기화는 Supabase Edge Function 이 맡는다 — 로컬 프록시(/api) 불필요.
   },
 })

@@ -83,13 +83,17 @@ export default function Exercise() {
     void runLoad()
   }, [runLoad])
 
-  async function handleSync() {
+  // 평소엔 최근 60일치만 당긴다 (자주 눌러도 가볍게). full 은 과거 전체를 다시 채울 때.
+  async function handleSync(full = false) {
     setSyncing(true)
     setSyncMsg(null)
     try {
-      const r = await runIntervalsSync()
+      const r = await runIntervalsSync({ full })
       await load()
-      setSyncMsg(`동기화 완료 · 활동 ${r.activities} · 웰니스 ${r.wellness} · 대회 ${r.races}`)
+      setSyncMsg(
+        `동기화 완료${full ? ' (전체 기간)' : ''} · 활동 ${r.activities} · 웰니스 ${r.wellness} · 대회 ${r.races}` +
+          (r.events ? ` · 일정 ${r.events}` : ''),
+      )
     } catch (e) {
       setSyncMsg('동기화 실패: ' + (e instanceof Error ? e.message : String(e)))
     } finally {
@@ -187,16 +191,27 @@ export default function Exercise() {
           <h2>운동</h2>
           <p className="muted">intervals.icu · 훈련부하 · 활동 · 컨디션</p>
         </div>
-        <button className="sync-btn" onClick={handleSync} disabled={syncing}>
-          {syncing ? (
-            <>
-              <span className="spinner" />
-              동기화 중…
-            </>
-          ) : (
-            <>↻ 새로고침</>
-          )}
-        </button>
+        <div className="sync-actions">
+          <button className="sync-btn" onClick={() => void handleSync(false)} disabled={syncing}>
+            {syncing ? (
+              <>
+                <span className="spinner" />
+                동기화 중…
+              </>
+            ) : (
+              <>↻ 새로고침</>
+            )}
+          </button>
+          {/* 최근분만 받는 게 기본이라, 과거를 처음 채울 때 쓸 길을 열어 둔다 */}
+          <button
+            className="link-btn small"
+            onClick={() => void handleSync(true)}
+            disabled={syncing}
+            title="과거 활동·웰니스를 전부 다시 가져옵니다 (오래 걸릴 수 있음)"
+          >
+            전체 기간
+          </button>
+        </div>
       </header>
 
       {syncMsg && <div className={`sync-msg ${syncMsg.startsWith('동기화 실패') ? 'err' : ''}`}>{syncMsg}</div>}

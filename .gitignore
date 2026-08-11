@@ -28,3 +28,6 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Edge Function 시크릿 (supabase secrets set --env-file 용, .env.local 에서 복사됨)
+supabase/.env.secrets
