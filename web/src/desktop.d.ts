@@ -115,7 +115,8 @@ interface DesktopBridge {
   app: {
     getInfo: () => Promise<AppInfo>
     setUrl: (url: string) => Promise<{ ok: boolean; url?: string; error?: string }>
-    reload: () => Promise<{ ok: boolean }>
+    /** hard=true 면 서비스워커·캐시까지 비우고 다시 연다 */
+    reload: (hard?: boolean) => Promise<{ ok: boolean }>
   }
   onAuthCallback: (cb: (url: string) => void) => void
   openShortcut: (target: string) => Promise<{ ok: boolean; error?: string }>

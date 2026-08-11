@@ -10,6 +10,9 @@ export default defineConfig({
     // Android 홈 화면 설치용 PWA. Electron 은 이 파일들을 무시하므로 데스크톱에 영향 없음.
     VitePWA({
       registerType: 'autoUpdate', // 새로 배포하면 다음 실행 때 자동 반영
+      // 등록 스크립트를 자동 주입하지 않는다 — 데스크톱 앱에서는 등록하지 않으려고
+      // main.tsx 에서 직접 부른다 (서비스워커가 낡은 화면을 붙잡는 문제, 아래 참고).
+      injectRegister: null,
       includeAssets: ['apple-touch-icon.png', 'favicon-32.png'],
       manifest: {
         name: 'MeOS',

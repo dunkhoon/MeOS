@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld('desktop', {
   app: {
     getInfo: () => ipcRenderer.invoke('app:getInfo'),
     setUrl: (url) => ipcRenderer.invoke('app:setUrl', url),
-    reload: () => ipcRenderer.invoke('app:reload'),
+    // hard=true 면 서비스워커·캐시까지 비우고 다시 연다
+    reload: (hard) => ipcRenderer.invoke('app:reload', !!hard),
   },
 
   // 매직링크 딥링크(privateplanner://auth?code=...) 도착 시 콜백

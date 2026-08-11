@@ -160,11 +160,17 @@ function AppUrlSetting() {
         {msg && <p className="muted small">{msg}</p>}
 
         <div className="modal-actions">
+          <button className="ghost-btn" onClick={() => void window.desktop?.app.reload(true)}>
+            캐시 비우고 새로 열기
+          </button>
           <button className="ghost-btn" onClick={() => void save(false)}>
             저장
           </button>
           <button onClick={() => void save(true)}>저장하고 다시 열기</button>
         </div>
+        <p className="muted small">
+          화면이 갱신되지 않으면 <b>Ctrl+Shift+R</b> 또는 위 “캐시 비우고 새로 열기”. 앱을 껐다 켜도 같습니다.
+        </p>
       </div>
     </div>
   )

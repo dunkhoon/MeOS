@@ -9,6 +9,7 @@ const {
   clipboard,
   safeStorage,
   nativeImage,
+  session,
 } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -18,6 +19,8 @@ const p4 = require('./p4')
 const llm = require('./llm')
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
+/** 배포 주소 기본값 — 설정에 저장된 값이 있으면 그쪽이 이긴다. */
+const DEFAULT_APP_URL = 'https://meos.dunkhoon.workers.dev'
 const isDev = !app.isPackaged
 const PROTOCOL = 'privateplanner'
 const DEFAULT_HOTKEY = 'CommandOrControl+Shift+Space'
@@ -151,7 +154,24 @@ function resolveAppUrl() {
   const override = normalizeUrl(process.env.MEOS_APP_URL)
   if (override) return override
   if (isDev) return DEV_URL
-  return normalizeUrl(getConfig().appUrl) || normalizeUrl(readEnvLocal().MEOS_APP_URL) || ''
+  return normalizeUrl(getConfig().appUrl) || normalizeUrl(readEnvLocal().MEOS_APP_URL) || DEFAULT_APP_URL
+}
+
+/**
+ * 서비스워커·HTTP 캐시를 비운다.
+ *
+ * 웹은 PWA(모바일 홈 화면 설치용)라 서비스워커가 번들을 통째로 캐시한다. 데스크톱 셸이 그 주소를
+ * 불러오면 워커도 같이 설치되는데, **재시작해도 워커는 살아남아** 재배포한 화면이 안 나온다.
+ * 앱 쪽에서는 이제 워커를 등록하지 않지만(web/src/main.tsx), 이미 설치된 것과 캐시는 여기서 치운다.
+ * localStorage 는 건드리지 않는다 — 로그인 세션이 거기 있다.
+ */
+async function clearWebCache() {
+  try {
+    await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] })
+    await session.defaultSession.clearCache()
+  } catch (e) {
+    console.error('[cache] 정리 실패', e.message)
+  }
 }
 
 function sameOrigin(a, b) {
@@ -249,7 +269,8 @@ ipcMain.handle('app:setUrl', (_e, raw) => {
   return { ok: true, url }
 })
 
-ipcMain.handle('app:reload', () => {
+ipcMain.handle('app:reload', async (_e, hard) => {
+  if (hard) await clearWebCache()
   loadApp()
   return { ok: true }
 })
@@ -618,8 +639,9 @@ if (!gotLock) {
     deliverAuthUrl(url)
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     Menu.setApplicationMenu(null) // File/Edit 등 기본 메뉴바 제거
+    await clearWebCache() // 앱을 다시 켜면 항상 최신 화면이 뜨도록
     createWindow()
     createTray()
     registerHotkey(getHotkey())
@@ -654,6 +676,9 @@ function createTray() {
       { label: '열기', click: () => showMain() },
       { label: 'Quick Search', click: () => openQuickSearch() },
       { type: 'separator' },
+      { label: '새로 고침 (Ctrl+R)', click: () => mainWindow?.webContents.reload() },
+      { label: '캐시 비우고 새로 열기', click: () => void hardReload() },
+      { type: 'separator' },
       { label: '종료', click: () => { isQuitting = true; app.quit() } },
     ]),
   )
@@ -684,6 +709,12 @@ function loadApp() {
     return
   }
   mainWindow.loadURL(url)
+}
+
+/** 캐시까지 비우고 주소부터 다시 연다 (Ctrl+Shift+R · 트레이 메뉴 · 설정 버튼). */
+async function hardReload() {
+  await clearWebCache()
+  loadApp()
 }
 
 /** 주소 입력 / 오류 안내용 로컬 화면. preload 가 붙어 있어 window.desktop 을 그대로 쓴다. */
@@ -732,6 +763,22 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
     if (!isMainFrame || code === -3) return // -3 = ERR_ABORTED (새로고침 등, 오류 아님)
     showShell(`${desc || '연결 실패'} (${code})`, url)
+  })
+
+  // 기본 메뉴바를 없앤 탓에 새로고침·개발자도구 단축키까지 사라졌다 — 직접 붙인다.
+  // (이게 없으면 화면이 낡았을 때 사용자가 할 수 있는 게 없다)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    const key = (input.key || '').toLowerCase()
+    const ctrl = input.control || input.meta
+    if ((ctrl && key === 'r') || key === 'f5') {
+      event.preventDefault()
+      if (input.shift) void hardReload()
+      else mainWindow.webContents.reload()
+    } else if (key === 'f12') {
+      event.preventDefault()
+      mainWindow.webContents.toggleDevTools()
+    }
   })
 
   mainWindow.webContents.on('did-finish-load', flushAuthUrl)
