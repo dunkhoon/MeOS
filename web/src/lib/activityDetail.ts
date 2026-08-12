@@ -35,13 +35,22 @@ export interface ActivityDetail {
 }
 
 const ACT_COLS =
-  'id, external_id, type, name, start_date_local, distance_m, moving_time_s, average_speed, average_hr, max_hr, calories, training_load, device_name, hr_zone_times'
+  'id, external_id, type, name, start_date_local, distance_m, moving_time_s, average_speed, average_hr, max_hr, calories, training_load, device_name, hr_zone_times, session_kind'
 
 /** 요약은 이미 동기화해 둔 DB 에서 읽는다 (오프라인·모바일에서도 빠르다). */
 export async function fetchActivity(externalId: string): Promise<Activity | null> {
   const { data, error } = await supabase.from('activities').select(ACT_COLS).eq('external_id', externalId).maybeSingle()
   if (error) throw new Error(error.message)
   return (data as Activity) ?? null
+}
+
+/**
+ * 세션 종류를 수동으로 지정한다. null 을 주면 지정을 지우고 이름 추정으로 돌아간다.
+ * 동기화는 upsert 로 지정한 컬럼만 덮으므로 이 값은 다음 동기화에도 살아남는다.
+ */
+export async function setSessionKind(externalId: string, kind: string | null): Promise<void> {
+  const { error } = await supabase.from('activities').update({ session_kind: kind }).eq('external_id', externalId)
+  if (error) throw new Error(error.message)
 }
 
 /** 랩·스트림은 Edge Function 이 intervals.icu 에서 그때그때 가져온다. */

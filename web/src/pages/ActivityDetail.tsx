@@ -17,6 +17,7 @@ import {
   fetchActivityDetail,
   fetchActivityNotes,
   lapLabel,
+  setSessionKind,
   paceFromSpeed,
   pct,
   type ActivityDetail as Detail,
@@ -24,7 +25,7 @@ import {
   type Lap,
 } from '../lib/activityDetail'
 import { fetchActivities, km, paceStr, type Activity } from '../lib/exercise'
-import { SESSION_COLOR, SESSION_LABEL, sessionKind } from '../lib/session'
+import { SESSION_COLOR, SESSION_KINDS, SESSION_LABEL, isManualKind, sessionKind, type SessionKind } from '../lib/session'
 import { analyzeSession, type Finding } from '../lib/nsm'
 
 // 훈련 상세 — 캘린더/최근활동에서 넘어온다. 요약 + 랩 분석 + 데이터 추이.
@@ -64,6 +65,8 @@ export default function ActivityDetail() {
   const [notes, setNotes] = useState<ActivityNote[]>([])
   /** 같은 종류 최근 세션 평균 심박 — "지난번보다 어땠나" 비교용 */
   const [recentAvgHr, setRecentAvgHr] = useState<number | null>(null)
+  const [savingKind, setSavingKind] = useState(false)
+  const [kindErr, setKindErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -96,7 +99,26 @@ export default function ActivityDetail() {
   }, [load])
 
   const kind = act ? sessionKind(act) : 'other'
+  const manual = act ? isManualKind(act) : false
   const laps = detail?.laps ?? []
+
+  /** 세션 종류 수동 지정. null 이면 지정을 지우고 이름 추정으로 되돌린다. */
+  const saveKind = async (next: SessionKind | null) => {
+    if (!act) return
+    setSavingKind(true)
+    setKindErr(null)
+    const before = act
+    // 화면에 먼저 반영 — 분석·색이 바로 따라 바뀐다
+    setAct({ ...act, session_kind: next })
+    try {
+      await setSessionKind(act.external_id, next)
+    } catch (e) {
+      setAct(before)
+      setKindErr(errMsg(e))
+    } finally {
+      setSavingKind(false)
+    }
+  }
 
   // 워밍업/휴식을 뺀 "실제 훈련 구간" — 랩 표에서 강조한다
   const workLaps = useMemo(() => laps.filter((l) => /work/i.test(l.type)), [laps])
@@ -176,7 +198,7 @@ export default function ActivityDetail() {
               <div className="ad-kind-name" style={{ color: SESSION_COLOR[kind] }}>
                 {SESSION_LABEL[kind] || act.type || '활동'}
               </div>
-              <div className="muted small">세션 종류 (이름에서 추정)</div>
+              <div className="muted small">세션 종류 {manual ? '(직접 지정)' : '(이름에서 추정)'}</div>
             </div>
 
             <div className="card ad-kpis">
@@ -189,6 +211,40 @@ export default function ActivityDetail() {
               <Kpi label="칼로리" value={act.calories ? `${act.calories} kcal` : '-'} />
               {detail?.lthr && <Kpi label="LTHR" value={`${detail.lthr} bpm`} tone="#f85149" />}
             </div>
+          </div>
+
+          {/* ── 세션 타입 수동 지정 (6.png) ── */}
+          <div className="card ad-kindpick">
+            <div className="ad-kp-head">
+              <h3 className="card-title">세션 타입</h3>
+              <p className="muted small">
+                바꾸면 캘린더 색과 <b>규칙 기반 분석의 목표 심박대</b>가 함께 바뀝니다.
+              </p>
+            </div>
+            <div className="ad-kp-btns">
+              {SESSION_KINDS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`tf-btn ${kind === k ? 'active' : ''}`}
+                  style={kind === k ? { borderColor: SESSION_COLOR[k], color: SESSION_COLOR[k] } : undefined}
+                  disabled={savingKind}
+                  onClick={() => void saveKind(k)}
+                >
+                  {SESSION_LABEL[k] || 'OTHER'}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="link-btn ad-kp-auto"
+                disabled={savingKind || !manual}
+                title={manual ? '지정을 지우고 활동 이름에서 다시 추정합니다' : '지금도 자동 추정 중입니다'}
+                onClick={() => void saveKind(null)}
+              >
+                자동으로 되돌리기
+              </button>
+            </div>
+            {kindErr && <p className="error small">{kindErr}</p>}
           </div>
 
           {/* ── NSM 규칙 기반 분석 (5.png) — 계산이라 LLM 없이 즉시 나온다 ── */}

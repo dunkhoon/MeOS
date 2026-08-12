@@ -2856,3 +2856,29 @@ code {
   border-radius: 9px;
   padding: 14px 16px;
 }
+
+/* ── 세션 타입 수동 지정 ────────────────────── */
+.ad-kindpick {
+  margin-bottom: 16px;
+  min-height: 0;
+}
+.ad-kp-head {
+  margin-bottom: 12px;
+}
+.ad-kp-head p {
+  margin: 4px 0 0;
+}
+.ad-kp-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ad-kp-auto {
+  margin-left: 6px;
+  font-size: 12px;
+}
+.ad-kp-auto:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

@@ -6,6 +6,13 @@
 
 export type SessionKind = 'race' | 'interval' | 'tempo' | 'long' | 'recovery' | 'easy' | 'other'
 
+/** 화면에서 고를 수 있는 순서 (강도 낮은 것 → 높은 것). */
+export const SESSION_KINDS: SessionKind[] = ['recovery', 'easy', 'long', 'tempo', 'interval', 'race', 'other']
+
+export function isSessionKind(v: unknown): v is SessionKind {
+  return typeof v === 'string' && (SESSION_KINDS as string[]).includes(v)
+}
+
 export const SESSION_LABEL: Record<SessionKind, string> = {
   race: 'RACE',
   interval: 'INTERVAL',
@@ -40,10 +47,24 @@ const RULES: { kind: SessionKind; re: RegExp }[] = [
   { kind: 'easy', re: /\beasy\b|\bjog\b|\baerobic\b|이지|조깅/i },
 ]
 
-export function sessionKind(a: { name?: string | null; type?: string | null }): SessionKind {
+/**
+ * 세션 종류. **사용자가 지정한 값이 있으면 그게 이긴다** —
+ * 이름 규칙은 어디까지나 추정이고, 이름을 그렇게 안 적는 활동도 있다.
+ */
+export function sessionKind(a: {
+  name?: string | null
+  type?: string | null
+  session_kind?: string | null
+}): SessionKind {
+  if (isSessionKind(a.session_kind)) return a.session_kind
   const name = a.name ?? ''
   for (const r of RULES) if (r.re.test(name)) return r.kind
   return 'other'
+}
+
+/** 이 활동의 종류가 사람이 고른 것인지 (화면에 "자동 추정" 여부를 표시하려고) */
+export function isManualKind(a: { session_kind?: string | null }): boolean {
+  return isSessionKind(a.session_kind)
 }
 
 /** 한 셀에 여러 활동이 있을 때 대표로 보여줄 것 — 강도가 높은 세션을 앞세운다. */

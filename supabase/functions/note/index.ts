@@ -98,7 +98,7 @@ async function firstUserId(admin: SupabaseClient): Promise<string> {
 async function recentActivities(admin: SupabaseClient, userId: string) {
   const { data, error } = await admin
     .from('activities')
-    .select('external_id, name, type, start_date_local, distance_m, moving_time_s, average_hr, max_hr, training_load')
+    .select('external_id, name, type, session_kind, start_date_local, distance_m, moving_time_s, average_hr, max_hr, training_load')
     .eq('user_id', userId)
     .order('start_date_local', { ascending: false })
     .limit(20)
@@ -111,7 +111,7 @@ async function context(admin: SupabaseClient, userId: string, id: string) {
   const { data: act, error } = await admin
     .from('activities')
     .select(
-      'external_id, name, type, start_date_local, distance_m, moving_time_s, average_hr, max_hr, calories, training_load, hr_zone_times',
+      'external_id, name, type, session_kind, start_date_local, distance_m, moving_time_s, average_hr, max_hr, calories, training_load, hr_zone_times',
     )
     .eq('user_id', userId)
     .eq('external_id', id)

@@ -20,6 +20,8 @@ export interface Activity {
   training_load: number | null
   device_name: string | null
   hr_zone_times: number[] | null
+  /** 사용자가 수동 지정한 세션 종류 (null 이면 이름에서 추정) */
+  session_kind: string | null
 }
 
 export interface Wellness {
@@ -39,7 +41,7 @@ export async function fetchActivities(sinceISODate: string): Promise<Activity[]>
   const { data, error } = await supabase
     .from('activities')
     .select(
-      'id, external_id, type, name, start_date_local, distance_m, moving_time_s, average_speed, average_hr, max_hr, calories, training_load, device_name, hr_zone_times',
+      'id, external_id, type, name, start_date_local, distance_m, moving_time_s, average_speed, average_hr, max_hr, calories, training_load, device_name, hr_zone_times, session_kind',
     )
     .gte('start_date_local', sinceISODate)
     .order('start_date_local', { ascending: false })
