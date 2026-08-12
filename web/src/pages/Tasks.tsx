@@ -257,21 +257,14 @@ export default function Tasks() {
     }
   }
 
+  /** 제목만 바꾼다. 링크는 건드리지 않는다 (URL 버튼 담당). */
   const saveEdit = async (it: WorkItem, text: string) => {
     const trimmed = text.trim()
     if (!trimmed) {
       setEditing(null)
       return // 제목을 비우는 건 삭제가 아니므로 무시
     }
-    // BTS 항목은 원본 이슈 링크를 유지하고 제목만 고친다.
-    // 직접 입력 항목은 "제목 https://…" 를 붙여넣는 습관을 계속 지원한다.
-    if (it.origin === 'bts') {
-      await applyPatch(it, { title: trimmed })
-      return
-    }
-    const next = splitTitleAndUrl(trimmed)
-    // URL 을 안 적었으면 기존 링크는 그대로 둔다 (URL 은 URL 버튼으로 따로 고친다)
-    await applyPatch(it, next.url ? next : { title: next.title })
+    await applyPatch(it, { title: trimmed })
   }
 
   const saveUrl = async (it: WorkItem, text: string) => {
@@ -569,11 +562,9 @@ function RowTitle({
   onSave: (text: string) => void
   onCancel: () => void
 }) {
-  if (editing) {
-    // 수정할 땐 add 입력과 같은 규칙 — "제목 https://…" 로 링크까지 한 줄에 고친다
-    const initial = item.origin === 'bts' ? item.title : [item.title, item.url].filter(Boolean).join(' ')
-    return <EditInput initial={initial} onSave={onSave} onCancel={onCancel} />
-  }
+  // 제목만 고친다 — URL 은 옆의 URL 버튼이 맡는다.
+  // (예전엔 "제목 https://…" 를 한 칸에 넣었지만, 링크가 딸려 나와 제목만 고치기 번거로웠다)
+  if (editing) return <EditInput initial={item.title} onSave={onSave} onCancel={onCancel} />
   return (
     <span
       className={`${cls} ${item.url ? 'link' : ''}`}
