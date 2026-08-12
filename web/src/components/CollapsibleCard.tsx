@@ -34,7 +34,7 @@ export function CollapsibleCard({
   }
 
   return (
-    <div className="card">
+    <div className={`card${collapsed ? ' collapsed' : ''}`}>
       <div className="card-head">
         <button type="button" className="card-toggle" onClick={toggle} aria-expanded={!collapsed}>
           <span className={`caret ${collapsed ? 'collapsed' : ''}`}>▾</span>

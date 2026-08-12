@@ -1023,6 +1023,13 @@ button:disabled {
   padding: 20px;
   min-height: 120px;
 }
+/* 접으면 본문이 사라지는데 min-height 가 남아 빈 공간이 생겼다.
+   제목줄만 남는 얇은 바가 되도록 높이 제한을 풀고 위아래 여백도 줄인다. */
+.card.collapsed {
+  min-height: 0;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
 .card.placeholder {
   display: flex;
   align-items: center;
@@ -1205,6 +1212,8 @@ code {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  /* 기본값(stretch)이면 접은 카드가 옆 카드 높이만큼 늘어나 안 접힌 것처럼 보인다 */
+  align-items: start;
 }
 .card-title {
   margin: 0;
