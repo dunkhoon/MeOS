@@ -5,9 +5,7 @@
 //
 // 배포: npx supabase functions deploy activity
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+import { Unauthorized, whoIs } from '../_shared/auth.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -36,7 +34,7 @@ Deno.serve(async (req) => {
     }
     if (!/^[\w-]{1,64}$/.test(id)) return json({ ok: false, error: '활동 id 가 올바르지 않습니다.' }, 400)
 
-    await requireUser(req)
+    whoIs(req) // 게이트웨이가 검증한 JWT — 신원만 확인하고 데이터는 계정 하나뿐이라 그대로 쓴다
 
     const apiKey = Deno.env.get('INTERVALS_API_KEY')
     if (!apiKey) return json({ ok: false, error: 'intervals.icu 시크릿이 없습니다.' }, 500)
@@ -66,34 +64,9 @@ Deno.serve(async (req) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     console.error('[activity] 실패:', message)
-    return json({ ok: false, error: message }, message === 'UNAUTHORIZED' ? 401 : 500)
+    return json({ ok: false, error: message }, e instanceof Unauthorized ? 401 : 500)
   }
 })
-
-/** JWT 페이로드의 role 만 꺼내 본다 (서명 검증은 게이트웨이가 이미 했다). */
-function tokenRole(token: string): string | null {
-  try {
-    const p = token.split('.')[1]
-    if (!p) return null
-    const json = atob(p.replace(/-/g, '+').replace(/_/g, '/'))
-    return (JSON.parse(json)?.role as string) ?? null
-  } catch {
-    return null
-  }
-}
-
-/** 호출자가 로그인한 사용자인지 확인 (데이터는 본인 것뿐이라 신원만 본다). */
-async function requireUser(req: Request): Promise<void> {
-  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
-  if (!token) throw new Error('UNAUTHORIZED')
-  // CLI·스크립트는 service_role 로 부른다. 문자열 비교 대신 role 클레임을 보는 게 안전하다
-  // (키를 회전해도 동작하고, 공백 하나에 어긋나지 않는다).
-  if (token === SERVICE_KEY || tokenRole(token) === 'service_role') return
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) throw new Error('UNAUTHORIZED')
-}
 
 interface Lap {
   index: number

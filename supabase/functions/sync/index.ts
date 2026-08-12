@@ -13,10 +13,10 @@
 //        SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY 는 자동 주입된다.
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { whoIs } from '../_shared/auth.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -62,25 +62,12 @@ Deno.serve(async (req) => {
 
 /**
  * 누구 데이터를 동기화할지 정한다.
- * 앱에서 부르면 그 사람의 JWT 가 온다. cron/CLI 는 service_role 키로 오는데 그건 사용자 토큰이
- * 아니라 getUser 가 실패한다 — 그때만 가입된 첫 사용자로 넘어간다 (1인용 앱 전제).
+ * 앱에서 부르면 그 사용자의 JWT 가 온다. cron/CLI 는 service_role 키로 오는데 그건 사용자
+ * 토큰이 아니므로 가입된 첫 사용자로 넘어간다 (1인용 앱 전제).
  */
 async function resolveUserId(req: Request, admin: SupabaseClient): Promise<{ userId: string; via: 'jwt' | 'service' }> {
-  const authHeader = req.headers.get('Authorization') ?? ''
-  const token = authHeader.replace(/^Bearer\s+/i, '')
-
-  if (token && token !== SERVICE_KEY) {
-    // supabase-js 의 auth.getUser() 는 인자가 없으면 "저장된 세션"에서 토큰을 찾는다.
-    // 서버에는 세션 저장소가 없으므로 토큰을 직접 실어 물어봐야 한다.
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` },
-    })
-    if (res.ok) {
-      const user = await res.json()
-      if (user?.id) return { userId: user.id as string, via: 'jwt' }
-    }
-    // 유효한 사용자 토큰이 아니면(예: cron 이 보낸 다른 서비스 키) 아래 관리자 경로로 넘어간다
-  }
+  const who = whoIs(req)
+  if (who.via === 'user' && who.userId) return { userId: who.userId, via: 'jwt' }
 
   const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 })
   if (error) throw new Error(`사용자 조회 실패: ${error.message}`)
