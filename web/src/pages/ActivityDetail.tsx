@@ -63,8 +63,8 @@ export default function ActivityDetail() {
   const [err, setErr] = useState<string | null>(null)
   const [metric, setMetric] = useState<MetricKey>('heartrate')
   const [notes, setNotes] = useState<ActivityNote[]>([])
-  /** 같은 종류 최근 세션 평균 심박 — "지난번보다 어땠나" 비교용 */
-  const [recentAvgHr, setRecentAvgHr] = useState<number | null>(null)
+  /** 비교용 최근 활동 목록. 세션 종류를 바꾸면 비교 대상도 달라지므로 목록째 들고 있는다. */
+  const [recent, setRecent] = useState<Activity[]>([])
   const [savingKind, setSavingKind] = useState(false)
   const [kindErr, setKindErr] = useState<string | null>(null)
 
@@ -80,7 +80,7 @@ export default function ActivityDetail() {
         return
       }
       void fetchActivityNotes(id).then(setNotes)
-      void loadRecentAvg(a).then(setRecentAvgHr)
+      void loadRecent(a).then(setRecent)
       // 요약은 떴는데 랩/추이만 실패할 수 있다 — 그 경우 요약이라도 보여준다
       try {
         setDetail(await fetchActivityDetail(id))
@@ -119,6 +119,15 @@ export default function ActivityDetail() {
       setSavingKind(false)
     }
   }
+
+  /** 같은 종류 최근 세션의 **활동 평균** 심박 (이번 활동 제외). kind 가 바뀌면 다시 계산된다. */
+  const recentAvgHr = useMemo(() => {
+    if (!act) return null
+    const peers = recent
+      .filter((x) => x.external_id !== act.external_id && x.average_hr && sessionKind(x) === kind)
+      .slice(0, 8)
+    return peers.length ? peers.reduce((s, x) => s + (x.average_hr as number), 0) / peers.length : null
+  }, [recent, act, kind])
 
   // 워밍업/휴식을 뺀 "실제 훈련 구간" — 랩 표에서 강조한다
   const workLaps = useMemo(() => laps.filter((l) => /work/i.test(l.type)), [laps])
@@ -160,9 +169,16 @@ export default function ActivityDetail() {
   const analysis = useMemo(
     () =>
       laps.length
-        ? analyzeSession({ kind, lthr: detail?.lthr ?? null, laps, streams: detail?.streams ?? {}, recentAvgHr })
+        ? analyzeSession({
+            kind,
+            lthr: detail?.lthr ?? null,
+            laps,
+            streams: detail?.streams ?? {},
+            activityAvgHr: act?.average_hr ?? null,
+            recentAvgHr,
+          })
         : null,
-    [kind, detail, laps, recentAvgHr],
+    [kind, detail, laps, recentAvgHr, act],
   )
 
   if (loading) {
@@ -429,24 +445,15 @@ export default function ActivityDetail() {
   )
 }
 
-/**
- * 같은 종류 세션의 최근 평균 심박 (이번 활동 제외).
- * "지난번 대비 어땠나" 한 줄을 위해 최근 90일치만 본다.
- */
-async function loadRecentAvg(a: Activity): Promise<number | null> {
+/** 비교용 최근 활동 (최근 90일). 종류별 평균은 화면에서 그때그때 고른다. */
+async function loadRecent(a: Activity): Promise<Activity[]> {
   try {
     const since = dayjs(a.start_date_local ?? undefined)
       .subtract(90, 'day')
       .format('YYYY-MM-DD')
-    const list = await fetchActivities(since)
-    const kind = sessionKind(a)
-    const peers = list
-      .filter((x) => x.external_id !== a.external_id && x.average_hr && sessionKind(x) === kind)
-      .slice(0, 8)
-    if (!peers.length) return null
-    return peers.reduce((s, x) => s + (x.average_hr as number), 0) / peers.length
+    return await fetchActivities(since)
   } catch {
-    return null
+    return []
   }
 }
 
