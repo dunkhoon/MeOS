@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { runIntervalsSync } from '../lib/sync'
+import { NAV, rankMatch } from '../lib/nav'
 
 // Quick Search 오버레이 — 전역 단축키/트레이로 열림. 페이지·명령·바로가기·스니펫 검색.
 interface Item {
@@ -9,6 +10,8 @@ interface Item {
   label: string
   icon: string
   hint: string
+  /** 라벨과 표기가 다른 검색어 (Perforce ↔ 퍼포스 등) */
+  keywords?: string[]
   run: () => void | string | Promise<void | string>
 }
 
@@ -36,20 +39,22 @@ export function QuickSearch() {
   }, [open])
 
   const items = useMemo<Item[]>(() => {
-    const pages: Item[] = [
-      { id: 'p-dash', label: '대시보드', icon: '▦', hint: '페이지', run: () => navigate('/') },
-      { id: 'p-cal', label: '캘린더', icon: '▤', hint: '페이지', run: () => navigate('/calendar') },
-      { id: 'p-task', label: '업무', icon: '✔', hint: '페이지', run: () => navigate('/tasks') },
-      { id: 'p-ex', label: '운동', icon: '◠', hint: '페이지', run: () => navigate('/exercise') },
-      { id: 'p-rep', label: '리포트', icon: '▧', hint: '페이지', run: () => navigate('/report') },
-      { id: 'p-set', label: '설정', icon: '⚙', hint: '페이지', run: () => navigate('/settings') },
-    ]
+    // 사이드바와 같은 목록에서 만든다 — 화면을 추가하면 검색에도 자동으로 나온다
+    const pages: Item[] = NAV.filter((n) => !n.desktopOnly || !!window.desktop?.isDesktop).map((n) => ({
+      id: 'p-' + n.to,
+      label: n.label,
+      icon: n.icon,
+      hint: '페이지',
+      keywords: n.keywords,
+      run: () => navigate(n.to),
+    }))
     const cmds: Item[] = [
       {
         id: 'c-sync',
         label: '운동 동기화 (intervals.icu)',
         icon: '↻',
         hint: '명령',
+        keywords: ['sync', '동기화', '새로고침'],
         run: async () => {
           setToast('동기화 중…')
           try {
@@ -60,7 +65,14 @@ export function QuickSearch() {
           }
         },
       },
-      { id: 'c-logout', label: '로그아웃', icon: '⏻', hint: '명령', run: () => void supabase.auth.signOut() },
+      {
+        id: 'c-logout',
+        label: '로그아웃',
+        icon: '⏻',
+        hint: '명령',
+        keywords: ['logout', 'signout', '나가기'],
+        run: () => void supabase.auth.signOut(),
+      },
     ]
     let shortcuts: Item[] = []
     try {
@@ -94,15 +106,13 @@ export function QuickSearch() {
   }, [snips, navigate])
 
   const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase()
+    const query = q.trim()
     if (!query) return items
     return items
-      .filter((it) => it.label.toLowerCase().includes(query))
-      .sort((a, b) => {
-        const as = a.label.toLowerCase().startsWith(query) ? 0 : 1
-        const bs = b.label.toLowerCase().startsWith(query) ? 0 : 1
-        return as - bs
-      })
+      .map((it) => ({ it, r: rankMatch(query, it.label, it.keywords) }))
+      .filter((x) => x.r >= 0)
+      .sort((a, b) => a.r - b.r)
+      .map((x) => x.it)
   }, [q, items])
 
   useEffect(() => {

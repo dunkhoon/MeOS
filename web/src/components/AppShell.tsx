@@ -4,25 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
 import { Shortcuts } from './Shortcuts'
 import { QuickSearch } from './QuickSearch'
-
-interface NavEntry {
-  to: string
-  label: string
-  icon: string
-  end?: boolean
-  desktopOnly?: boolean
-}
-
-const NAV: NavEntry[] = [
-  { to: '/', label: '대시보드', icon: '▦', end: true },
-  { to: '/calendar', label: '캘린더', icon: '▤' },
-  { to: '/tasks', label: '업무', icon: '✔' }, // BTS 목록만 PC 전용 — 나머지는 모바일에서도 보인다
-  { to: '/perforce', label: 'Perforce', icon: '⑂', desktopOnly: true },
-  { to: '/exercise', label: '운동', icon: '◠' },
-  { to: '/report', label: '리포트', icon: '▧' },
-  { to: '/trash', label: '휴지통', icon: '🗑' },
-  { to: '/settings', label: '설정', icon: '⚙' },
-]
+import { NAV } from '../lib/nav'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { session } = useAuth()
