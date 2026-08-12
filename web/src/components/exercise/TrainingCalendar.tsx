@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
@@ -13,9 +13,36 @@ interface DayEntry {
   kind: SessionKind
 }
 
+// 보던 달을 기억한다. 상세를 보고 뒤로 오면 컴포넌트가 다시 마운트되는데,
+// 그때마다 이번 달로 튀면 지난달을 훑어보기가 어렵다.
+// sessionStorage 라 앱을 새로 켜면 이번 달에서 시작한다 (localStorage 면 몇 달 전이 떠서 더 헷갈린다).
+const MONTH_KEY = 'pp:tcal:month'
+
+function readMonth(): dayjs.Dayjs {
+  try {
+    const saved = sessionStorage.getItem(MONTH_KEY)
+    // customParseFormat 플러그인을 쓰지 않으므로 형식 인자 대신 완전한 날짜로 만들어 넘긴다
+    if (saved && /^\d{4}-\d{2}$/.test(saved)) {
+      const d = dayjs(`${saved}-01`)
+      if (d.isValid()) return d.startOf('month')
+    }
+  } catch {
+    /* 저장소를 못 쓰면 이번 달로 */
+  }
+  return dayjs().startOf('month')
+}
+
 export function TrainingCalendar({ activities }: { activities: Activity[] }) {
   const navigate = useNavigate()
-  const [month, setMonth] = useState(() => dayjs().startOf('month'))
+  const [month, setMonth] = useState(readMonth)
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(MONTH_KEY, month.format('YYYY-MM'))
+    } catch {
+      /* 저장 실패는 무시 — 이번 세션에서만 못 기억할 뿐 */
+    }
+  }, [month])
 
   const byDay = useMemo(() => {
     const m = new Map<string, DayEntry[]>()
@@ -64,6 +91,15 @@ export function TrainingCalendar({ activities }: { activities: Activity[] }) {
       }
       actions={
         <div className="tcal-nav">
+          {!isThisMonth && (
+            <button
+              className="link-btn tcal-today"
+              onClick={() => setMonth(dayjs().startOf('month'))}
+              title="이번 달로"
+            >
+              오늘
+            </button>
+          )}
           <button className="ghost-btn tcal-arrow" onClick={() => setMonth((m) => m.subtract(1, 'month'))} title="이전 달">
             ←
           </button>

@@ -2882,3 +2882,7 @@ code {
   opacity: 0.4;
   cursor: default;
 }
+.tcal-today {
+  font-size: 12px;
+  margin-right: 2px;
+}
