@@ -8,7 +8,7 @@
 MeOS/  (저장소 폴더는 PrivatePlanner)
 ├─ web/         React + TS + Vite (PC·모바일 공용 UI)
 ├─ electron/    데스크톱 셸 — 화면은 배포된 웹에서 불러오고, 창·트레이·p4·BTS 만 담당
-├─ supabase/    DB 스키마 마이그레이션 + Edge Function(동기화)
+├─ supabase/    DB 스키마 마이그레이션 + Edge Functions (동기화 · 활동 상세)
 ├─ docs/        설계 문서
 └─ .env.local   시크릿 (git 제외) — 아래 참고
 ```
@@ -47,13 +47,23 @@ intervals.icu(활동·웰니스·대회)와 구글 캘린더를 Supabase DB 로 
 > 예전엔 PC 에서 로컬 서버(`server/sync-server.mjs`)를 띄워야 동작했다. 그래서 배포된 웹·모바일·exe
 > 에서는 `/api` 가 없어 쓸 수 없었다. 지금은 어디서 열든 같은 함수를 부른다.
 
+함수는 두 개다.
+
+| 함수 | 하는 일 |
+|---|---|
+| `sync` | intervals.icu + 구글 캘린더 → Supabase (앱 버튼 · CLI · cron) |
+| `activity` | 활동 하나의 **랩·데이터 추이**를 intervals.icu 에서 그때그때 가져온다 (훈련 상세 화면) |
+
+> `activity` 는 DB 에 넣지 않고 볼 때만 부른다 — 스트림 원본이 활동 하나에 300KB 를 넘어 쌓기엔 과하고,
+> intervals.icu 키는 서버 전용이라 브라우저에서 직접 부를 수도 없다. 응답은 700포인트로 줄여 약 50KB.
+
 ### 배포 (최초 1회 + 함수를 고칠 때마다)
 
 ```bash
 npx supabase login                                  # 브라우저로 1회 인증
 npx supabase link --project-ref ggtnaqmmdjcfhkqzjhty
 npx supabase secrets set --env-file supabase/.env.secrets   # 시크릿 등록
-npm run functions:deploy                            # = supabase functions deploy sync
+npm run functions:deploy                            # = supabase functions deploy sync activity
 ```
 
 - `supabase/.env.secrets` 는 `.env.local` 에서 복사해 만든 파일이고 **git 에서 제외**돼 있다

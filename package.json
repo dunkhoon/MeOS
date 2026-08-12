@@ -17,7 +17,7 @@
     "deploy": "npm run build && npx wrangler deploy",
     "sync": "node scripts/sync-intervals.mjs",
     "sync:full": "node scripts/sync-intervals.mjs --full",
-    "functions:deploy": "npx supabase functions deploy sync",
+    "functions:deploy": "npx supabase functions deploy sync && npx supabase functions deploy activity",
     "google-auth": "node scripts/google-auth.mjs",
     "desktop": "npm run start -w electron",
     "desktop:dev": "concurrently -k -n web,app -c cyan,green \"npm:dev\" \"wait-on tcp:127.0.0.1:5173 && npm run start -w electron\""

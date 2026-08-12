@@ -2517,3 +2517,255 @@ code {
   font-size: 12px;
   align-self: center;
 }
+
+/* ── 월간 훈련 캘린더 ───────────────────────── */
+.tcal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tcal-arrow {
+  padding: 3px 9px;
+  line-height: 1;
+}
+.tcal-month {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  min-width: 92px;
+  text-align: center;
+}
+.tcal-total {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+.tcal-total b {
+  color: var(--accent);
+}
+.tcal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.tcal-dow {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+.tcal-cell {
+  min-height: 74px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 6px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-elev);
+}
+.tcal-cell.outside {
+  opacity: 0.32;
+}
+.tcal-cell.today {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.tcal-cell.has {
+  background: color-mix(in srgb, var(--bg-elev) 82%, currentColor 18%);
+}
+.tcal-day {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tcal-none {
+  margin: auto;
+  color: #3a3f4d;
+  font-size: 13px;
+}
+.tcal-km {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.tcal-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: auto;
+}
+.tcal-act {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tcal-act:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+.tcal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.tcal-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tcal-lg i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.tcal-note {
+  margin-left: auto;
+}
+
+/* ── 훈련 상세 ──────────────────────────────── */
+.ad-back {
+  font-size: 12px;
+  margin-bottom: 6px;
+  display: inline-block;
+}
+.ad-top {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+.ad-kind {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  min-height: 0;
+}
+.ad-kind-name {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.ad-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 16px 20px;
+  min-height: 0;
+}
+.ad-kpi-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.ad-kpi-val {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ad-chart,
+.ad-laps {
+  margin-bottom: 16px;
+}
+.ad-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.ad-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ad-table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+.ad-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.ad-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.ad-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #1b1e27;
+}
+.ad-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ad-table tr.rest td {
+  color: var(--muted);
+}
+.ad-table .strong {
+  font-weight: 700;
+  color: var(--text);
+}
+.ad-table tbody tr:hover td {
+  background: var(--bg-elev);
+}
+.ad-table tfoot td {
+  padding: 9px 10px;
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+.chip.lap-work {
+  background: rgba(255, 107, 53, 0.15);
+  color: #ff8a5c;
+  border-color: rgba(255, 107, 53, 0.35);
+}
+.chip.lap-rest {
+  background: var(--bg-elev);
+  color: var(--muted);
+  border-color: var(--border);
+}
+.act-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+@media (max-width: 768px) {
+  .ad-top {
+    grid-template-columns: 1fr;
+  }
+  .tcal-cell {
+    min-height: 58px;
+    padding: 4px;
+  }
+  .tcal-km {
+    font-size: 12px;
+  }
+  .tcal-act {
+    font-size: 8px;
+  }
+}

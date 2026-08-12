@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { runIntervalsSync } from '../lib/sync'
+import { TrainingCalendar } from '../components/exercise/TrainingCalendar'
 import {
   ZONE_COLORS,
   activityTypes,
@@ -257,6 +259,8 @@ export default function Exercise() {
         </div>
       </div>
 
+      <TrainingCalendar activities={filtered} />
+
       <div className="ex-grid">
         <DistanceChart activities={filtered} types={selectedTypes} />
         <CollapsibleCard id="ex-type" title="종류별">
@@ -366,6 +370,7 @@ function TypeBreakdown({ activities }: { activities: Activity[] }) {
 
 function RecentActivities({ activities }: { activities: Activity[] }) {
   const [openId, setOpenId] = useState<string | null>(null)
+  const navigate = useNavigate()
   if (!activities.length) return <p className="muted small">데이터 없음</p>
   return (
     <table className="act-table">
@@ -440,14 +445,19 @@ function RecentActivities({ activities }: { activities: Activity[] }) {
                         </div>
                       </div>
                     )}
-                    <a
-                      className="ext-link"
-                      href={`https://intervals.icu/activities/${a.external_id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      상세 ↗
-                    </a>
+                    <div className="act-links">
+                      <button className="ghost-btn" onClick={() => navigate(`/activity/${a.external_id}`)}>
+                        훈련 상세 보기 →
+                      </button>
+                      <a
+                        className="ext-link"
+                        href={`https://intervals.icu/activities/${a.external_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        intervals.icu ↗
+                      </a>
+                    </div>
                   </td>
                 </tr>
               )}

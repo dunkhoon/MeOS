@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Calendar from './pages/Calendar'
 import Tasks from './pages/Tasks'
 import Exercise from './pages/Exercise'
+import ActivityDetail from './pages/ActivityDetail'
 import Report from './pages/Report'
 import Perforce from './pages/Perforce'
 import Trash from './pages/Trash'
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/exercise" element={<Exercise />} />
+              <Route path="/activity/:id" element={<ActivityDetail />} />
               <Route path="/report" element={<Report />} />
               <Route path="/perforce" element={<Perforce />} />
               <Route path="/trash" element={<Trash />} />
