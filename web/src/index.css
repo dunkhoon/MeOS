@@ -2209,9 +2209,71 @@ code {
   padding: 5px 8px;
   border-radius: 6px;
   cursor: grab;
+  user-select: none; /* Shift+클릭 범위 선택 시 텍스트가 파랗게 끌리는 것 방지 */
 }
 .p4-file:hover {
   background: var(--bg-elev);
+}
+.p4-file.sel {
+  background: var(--accent-soft);
+}
+.p4-file.sel:hover {
+  background: var(--accent-soft);
+  filter: brightness(1.25);
+}
+.p4-file > input[type='checkbox'],
+.p4-selall input[type='checkbox'] {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.p4-selall {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 선택한 파일 일괄 이동 바 */
+.p4-selbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 10px;
+  background: var(--bg-card);
+  font-size: 13px;
+}
+.p4-selcount b {
+  color: var(--accent);
+}
+.p4-moveto {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.p4-moveto select {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  max-width: 340px;
+  cursor: pointer;
+}
+.p4-moveto select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 .p4-path {
   flex: 1;

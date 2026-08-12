@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CollapsibleCard } from '../components/CollapsibleCard'
+import { applyClick, planMove, toggleAll } from '../lib/p4move'
 
 // Perforce — PC 전용. p4 CLI 는 Electron main 에서 실행한다.
 // 서밋 로그는 사내 로컬 LLM(llm.aquatree.games)으로 작성하므로 diff 가 회사 밖으로 나가지 않는다.
@@ -56,7 +57,14 @@ export default function Perforce() {
         setErr(res.error ?? '조회 실패')
         return
       }
-      setChanges(res.changes ?? [])
+      const list = res.changes ?? []
+      setChanges(list)
+      // 새로고침 사이에 사라진 파일(revert 등)이 선택에 남아 개수만 부풀지 않게 정리한다
+      const alive = new Set(list.flatMap((c) => c.files.map((f) => f.depotFile)))
+      setSelected((prev) => {
+        const next = new Set([...prev].filter((p) => alive.has(p)))
+        return next.size === prev.size ? prev : next
+      })
     } catch (e) {
       setErr(errMsg(e))
     } finally {
@@ -73,42 +81,89 @@ export default function Perforce() {
     window.setTimeout(() => setNotice(null), 3500)
   }
 
-  // ── 파일 드래그 이동 ───────────────────────────────────────
-  const dragRef = useRef<{ file: string; from: string } | null>(null)
-  const [over, setOver] = useState<string | null>(null)
+  // ── 선택 ──────────────────────────────────────────────────
+  // 파일을 하나씩만 끌어 옮기는 건 개수가 늘면 금방 고역이라, 체크로 여러 개를 골라
+  // 한 번에 옮길 수 있게 한다. 선택은 체인지리스트를 넘나들 수 있다 (p4 reopen 이 한 번에 받는다).
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Shift 범위 선택 기준점 — 같은 체인지리스트 안에서만 의미가 있다
+  const anchorRef = useRef<{ change: string; index: number } | null>(null)
 
-  const dropTo = (toChange: string) => async (e: React.DragEvent) => {
-    e.preventDefault()
-    const d = dragRef.current
-    dragRef.current = null
-    setOver(null)
-    if (!d || d.from === toChange) return
+  const clearSelection = () => {
+    setSelected(new Set())
+    anchorRef.current = null
+  }
 
-    // 화면에 먼저 반영하고, 실패하면 되돌린다
-    const before = changes
-    setChanges((prev) =>
-      prev.map((c) => {
-        if (c.change === d.from) return { ...c, files: c.files.filter((f) => f.depotFile !== d.file) }
-        if (c.change === toChange) {
-          const moved = before.find((x) => x.change === d.from)?.files.find((f) => f.depotFile === d.file)
-          return moved ? { ...c, files: [...c.files, { ...moved, change: toChange }] } : c
-        }
-        return c
+  /** 행 클릭 = 토글, Shift+클릭 = 기준점부터 범위 (탐색기와 달리 클릭이 기존 선택을 지우지 않는다) */
+  const clickFile = (c: P4Change, index: number, e: React.MouseEvent) => {
+    const anchor = anchorRef.current
+    setSelected((prev) =>
+      applyClick(prev, c.files, index, {
+        shift: e.shiftKey,
+        // 기준점은 같은 체인지리스트 안에서만 의미가 있다
+        anchor: anchor && anchor.change === c.change ? anchor.index : null,
       }),
     )
+    anchorRef.current = { change: c.change, index }
+  }
 
-    const res = await window.desktop?.p4.reopen([d.file], toChange)
+  const toggleAllIn = (c: P4Change) => {
+    setSelected((prev) => toggleAll(prev, c.files))
+    anchorRef.current = null
+  }
+
+  // ── 이동 ──────────────────────────────────────────────────
+  const clLabel = (change: string) => (change === 'default' ? 'default' : `CL ${change}`)
+
+  /**
+   * 여러 파일을 한 체인지리스트로 옮긴다. 화면에 먼저 반영하고 실패하면 되돌린다.
+   * `newCl` 은 방금 만들어 아직 목록에 없는 체인지리스트 (거기로 바로 옮길 때).
+   */
+  const moveFiles = async (paths: string[], toChange: string, newCl?: P4Change) => {
+    const { moving, next, before } = planMove(changes, paths, toChange, newCl)
+    if (!moving.length) {
+      if (newCl) setChanges(before) // 옮길 게 없어도 새로 만든 CL 은 보여준다
+      clearSelection()
+      return
+    }
+
+    setChanges(next)
+    clearSelection()
+
+    const res = await window.desktop?.p4.reopen(moving, toChange)
     if (!res?.ok) {
       setChanges(before)
       setErr(`파일 이동 실패: ${res?.error ?? '알 수 없는 오류'}`)
     } else {
-      flash(`${baseName(d.file)} → ${toChange === 'default' ? 'default' : `CL ${toChange}`}`)
+      flash(
+        moving.length === 1
+          ? `${baseName(moving[0])} → ${clLabel(toChange)}`
+          : `${moving.length}개 파일 → ${clLabel(toChange)}`,
+      )
       void load()
     }
   }
 
+  // ── 드래그 ────────────────────────────────────────────────
+  // 선택된 행을 끌면 선택 전체가 따라온다. 선택 안 된 행을 끌면 그것 하나만 (선택은 건드리지 않는다).
+  const dragRef = useRef<string[] | null>(null)
+  const [over, setOver] = useState<string | null>(null)
+
+  const startDrag = (path: string) => {
+    dragRef.current = selected.has(path) ? [...selected] : [path]
+  }
+
+  const dropTo = (toChange: string) => async (e: React.DragEvent) => {
+    e.preventDefault()
+    const paths = dragRef.current
+    dragRef.current = null
+    setOver(null)
+    if (paths?.length) await moveFiles(paths, toChange)
+  }
+
   // window.prompt 는 Electron 에서 동작하지 않아 모달을 쓴다
   const [newOpen, setNewOpen] = useState(false)
+  // 새 체인지리스트를 만든 뒤 선택한 파일을 바로 그리로 옮길지
+  const [newThenMove, setNewThenMove] = useState<string[] | null>(null)
 
   if (!isDesktop) {
     return (
@@ -165,8 +220,46 @@ export default function Perforce() {
       )}
 
       <p className="muted small p4-hint">
-        파일을 다른 체인지리스트로 끌어다 놓으면 이동합니다 (<code>p4 reopen</code>). 총 {totalFiles}개 파일.
+        파일을 눌러 고르고(Shift+클릭 = 범위) 아래에서 한 번에 옮기거나, 끌어다 놓으면 이동합니다
+        (<code>p4 reopen</code>). 총 {totalFiles}개 파일.
       </p>
+
+      {selected.size > 0 && (
+        <div className="p4-selbar">
+          <span className="p4-selcount">
+            <b>{selected.size}개</b> 선택됨
+          </span>
+          <label className="p4-moveto">
+            이동:
+            <select
+              value=""
+              onChange={(e) => {
+                const v = e.target.value
+                if (!v) return
+                const paths = [...selected]
+                if (v === '__new') {
+                  setNewThenMove(paths)
+                  setNewOpen(true)
+                } else {
+                  void moveFiles(paths, v)
+                }
+              }}
+            >
+              <option value="">체인지리스트 고르기…</option>
+              {changes.map((c) => (
+                <option key={c.change} value={c.change}>
+                  {clLabel(c.change)}
+                  {c.description ? ` — ${c.description.split('\n')[0].slice(0, 40)}` : ''}
+                </option>
+              ))}
+              <option value="__new">＋ 새 체인지리스트로…</option>
+            </select>
+          </label>
+          <button className="link-btn" onClick={clearSelection}>
+            선택 해제
+          </button>
+        </div>
+      )}
 
       {changes.map((c) => (
         <CollapsibleCard
@@ -186,6 +279,20 @@ export default function Perforce() {
           }
           actions={
             <>
+              {c.files.length > 0 && (
+                <label className="p4-selall" title="이 체인지리스트 전체 선택">
+                  <input
+                    type="checkbox"
+                    checked={c.files.every((f) => selected.has(f.depotFile))}
+                    ref={(el) => {
+                      if (!el) return
+                      const n = c.files.filter((f) => selected.has(f.depotFile)).length
+                      el.indeterminate = n > 0 && n < c.files.length
+                    }}
+                    onChange={() => toggleAllIn(c)}
+                  />
+                </label>
+              )}
               <span className="muted small">{c.files.length}개</span>
               <button
                 type="button"
@@ -215,20 +322,21 @@ export default function Perforce() {
             {c.files.length === 0 ? (
               <p className="muted small p4-empty">파일 없음 — 여기로 끌어다 놓으면 이 체인지리스트로 옮겨집니다.</p>
             ) : (
-              c.files.map((f) => (
+              c.files.map((f, i) => (
                 <div
                   key={f.depotFile}
-                  className="p4-file"
+                  className={`p4-file${selected.has(f.depotFile) ? ' sel' : ''}`}
                   draggable
-                  onDragStart={() => {
-                    dragRef.current = { file: f.depotFile, from: c.change }
-                  }}
+                  onDragStart={() => startDrag(f.depotFile)}
                   onDragEnd={() => {
                     dragRef.current = null
                     setOver(null)
                   }}
+                  onClick={(e) => clickFile(c, i, e)}
                   title={f.depotFile}
                 >
+                  {/* 체크박스는 표시 겸 클릭 대상 — 실제 토글은 행 onClick 이 처리한다 */}
+                  <input type="checkbox" checked={selected.has(f.depotFile)} readOnly tabIndex={-1} />
                   <span className={`chip ${actionClass(f.action)}`}>{f.action}</span>
                   <span className="p4-path">
                     <span className="muted">{dirName(f.depotFile)}</span>
@@ -244,11 +352,22 @@ export default function Perforce() {
 
       {newOpen && (
         <NewChangeModal
-          onClose={() => setNewOpen(false)}
+          moveCount={newThenMove?.length ?? 0}
+          onClose={() => {
+            setNewOpen(false)
+            setNewThenMove(null)
+          }}
           onCreated={(num) => {
             setNewOpen(false)
-            flash(`CL ${num} 생성됨`)
-            void load()
+            const paths = newThenMove
+            setNewThenMove(null)
+            if (paths?.length) {
+              // 방금 만든 CL 은 아직 목록에 없으므로 빈 항목으로 넘겨준다
+              void moveFiles(paths, num, { change: num, description: '', time: null, shelved: false, files: [] })
+            } else {
+              flash(`CL ${num} 생성됨`)
+              void load()
+            }
           }}
         />
       )}
@@ -271,7 +390,16 @@ export default function Perforce() {
 }
 
 // ── 새 체인지리스트 만들기 ───────────────────────────────────
-function NewChangeModal({ onClose, onCreated }: { onClose: () => void; onCreated: (change: string) => void }) {
+function NewChangeModal({
+  moveCount = 0,
+  onClose,
+  onCreated,
+}: {
+  /** 만든 뒤 바로 옮길 파일 수 (0 이면 빈 체인지리스트만 만든다) */
+  moveCount?: number
+  onClose: () => void
+  onCreated: (change: string) => void
+}) {
   const [desc, setDesc] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -300,7 +428,9 @@ function NewChangeModal({ onClose, onCreated }: { onClose: () => void; onCreated
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>새 체인지리스트</h3>
         <p className="muted small">
-          빈 체인지리스트를 만듭니다. 만든 뒤 파일을 끌어다 놓아 옮기세요.
+          {moveCount > 0
+            ? `만든 뒤 선택한 ${moveCount}개 파일을 이리로 옮깁니다.`
+            : '빈 체인지리스트를 만듭니다. 만든 뒤 파일을 끌어다 놓아 옮기세요.'}
         </p>
 
         <label>설명</label>
