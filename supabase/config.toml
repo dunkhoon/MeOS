@@ -7,3 +7,8 @@ verify_jwt = true
 
 [functions.activity]
 verify_jwt = true
+
+[functions.note]
+# 사람이 아니라 외부 에이전트가 부른다 — 사용자 JWT 가 없으므로
+# 게이트웨이 검증을 끄고 함수 안에서 MEOS_NOTE_TOKEN 을 직접 확인한다.
+verify_jwt = false

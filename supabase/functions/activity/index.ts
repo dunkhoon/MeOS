@@ -98,6 +98,8 @@ async function requireUser(req: Request): Promise<void> {
 interface Lap {
   index: number
   type: string
+  /** intervals.icu 가 묶어준 반복 그룹 (같은 값 = 같은 세트). 워밍업/반복/회복 구분에 쓴다 */
+  groupId: string | null
   label: string | null
   movingTime: number
   distance: number
@@ -115,6 +117,7 @@ function toLap(l: Record<string, unknown>, i: number): Lap {
   return {
     index: i + 1,
     type: String(l.type ?? ''),
+    groupId: (l.group_id as string) ?? null,
     label: (l.label as string) ?? null,
     movingTime: num(l.moving_time) ?? 0,
     distance: num(l.distance) ?? 0,

@@ -104,6 +104,56 @@ Vault 에 값이 없으면 cron 은 조용히 넘어가므로, 마이그레이�
 npx deno@2 check supabase/functions/sync/index.ts
 ```
 
+## 훈련 분석 — 규칙 기반 + 외부 AI
+
+훈련 상세 화면에는 분석이 **두 층**으로 붙는다.
+
+| | 무엇 | 어디서 |
+|---|---|---|
+| **NSM 규칙 기반 분석** | LTHR 초과율 · 반복 편차 · 드리프트 · 페이스 유지 · 목표존 적중 · 회복 · 지난 세션 대비 | 화면에서 즉석 계산 (`web/src/lib/nsm.ts`) — **AI 아님**, 오프라인·즉시·항상 같은 결과 |
+| **AI 코멘트** | 문장으로 된 조언 | 외부 에이전트가 써 넣는다 (아래) |
+
+> "반복"을 고를 때 intervals.icu 의 **그룹 정보(`group_id`)** 를 쓴다. 랩 종류(`type`)는 워밍업·쿨다운까지
+> 죄다 `WORK` 로 오기 때문에 그대로 쓰면 조깅과 인터벌이 섞여 편차·적중률이 엉망이 된다.
+> 그룹을 쓰면 `284s@165bpm × 6` 처럼 실제 반복만 잡힌다.
+
+### AI 코멘트 넣기 (OpenClaw · 디스코드 등)
+
+**MeOS 가 에이전트를 부르지 않는다. 에이전트가 MeOS 로 보낸다.** 그래서 집 PC 를 인터넷에 열
+필요가 없다 (포트포워딩·터널·고정IP 전부 불필요).
+
+Edge Function `note` 가 창구이고, 인증은 **공유 토큰** `MEOS_NOTE_TOKEN` 이다.
+
+```
+GET  /functions/v1/note?recent=1   → 최근 활동 20개 (어떤 걸 분석할지 고르기)
+GET  /functions/v1/note?id=<활동id> → 그 훈련의 요약 + 랩 + 기존 코멘트
+POST /functions/v1/note            → {"id": "...", "content": "...", "model": "..."} 저장
+```
+
+호출 예시 (헤더는 `x-meos-token` 또는 `Authorization: Bearer` 둘 다 받는다):
+
+```bash
+BASE=https://ggtnaqmmdjcfhkqzjhty.supabase.co/functions/v1/note
+
+# 1) 분석할 훈련 고르기
+curl -s "$BASE?recent=1" -H "x-meos-token: $MEOS_NOTE_TOKEN"
+
+# 2) 그 훈련 자료 받기 (여기까지가 LLM 에게 줄 재료)
+curl -s "$BASE?id=i174540791" -H "x-meos-token: $MEOS_NOTE_TOKEN"
+
+# 3) LLM 이 쓴 코멘트 올리기 → MeOS 훈련 상세에 바로 표시된다
+curl -s -X POST "$BASE" -H "x-meos-token: $MEOS_NOTE_TOKEN"   -H 'Content-Type: application/json; charset=utf-8'   -d '{"id":"i174540791","model":"gpt-5.4","content":"..."}'
+```
+
+- 같은 활동에 다시 POST 하면 덮어쓴다 (`source` 별로 하나씩 — 기본 `openclaw`).
+- 토큰을 바꾸려면 `npx supabase secrets set MEOS_NOTE_TOKEN=<새 값>`.
+- 이 함수만 `verify_jwt = false` 다 — 에이전트에는 사람 세션이 없어서, 대신 함수 안에서
+  토큰을 직접(타이밍 안전 비교로) 검사한다.
+
+> **왜 브라우저에서 OpenClaw 를 직접 부르지 않나**: MeOS 는 https 로 서비스되는데 `ws://집IP:18789`
+> 같은 평문 연결은 브라우저가 막는다(mixed content). https 로 뚫으면 되긴 하지만, 그러려면
+> **파일을 읽고 명령을 실행하는 에이전트를 인터넷에 노출**해야 한다. 위 방식은 그럴 필요가 없다.
+
 ### 업무 탭 — Redmine / JIRA 연결 (선택, PC 전용)
 
 업무 화면의 **BTS 섹션**만 데스크톱 앱에서 동작한다 (진행 중인 업무·할 일·루틴은 모바일에서도 사용 가능).

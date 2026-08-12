@@ -10,6 +10,8 @@ export interface Lap {
   index: number
   /** WORK / RECOVERY / WARMUP / COOLDOWN … (intervals.icu 원문) */
   type: string
+  /** intervals.icu 가 묶어준 반복 그룹 (같은 값 = 같은 세트) */
+  groupId: string | null
   label: string | null
   movingTime: number
   distance: number
@@ -65,6 +67,33 @@ async function readFunctionError(error: unknown): Promise<string> {
     if (ctx.status === 401) return '로그인이 만료된 것 같습니다. 다시 로그인해 주세요.'
   }
   return error instanceof Error ? error.message : '상세 정보를 불러오지 못했습니다.'
+}
+
+export interface ActivityNote {
+  source: string
+  content: string
+  model: string | null
+  updatedAt: string
+}
+
+/**
+ * 외부 AI 가 남긴 코멘트. Edge Function `note` 로 들어와 DB 에 쌓이고,
+ * 여기서는 RLS 로 내 것만 읽는다 (함수를 거칠 필요가 없다).
+ */
+export async function fetchActivityNotes(externalId: string): Promise<ActivityNote[]> {
+  const { data, error } = await supabase
+    .from('activity_notes')
+    .select('source, content, model, updated_at')
+    .eq('external_id', externalId)
+    .order('updated_at', { ascending: false })
+  // 마이그레이션 전이면 테이블이 없다 — 그것 때문에 화면이 깨지진 않게 한다
+  if (error) return []
+  return (data ?? []).map((r) => ({
+    source: r.source as string,
+    content: r.content as string,
+    model: (r.model as string) ?? null,
+    updatedAt: r.updated_at as string,
+  }))
 }
 
 // ── 표시용 계산 ──────────────────────────────────────────────

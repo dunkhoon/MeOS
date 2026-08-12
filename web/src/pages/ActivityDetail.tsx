@@ -15,14 +15,17 @@ import {
   clock,
   fetchActivity,
   fetchActivityDetail,
+  fetchActivityNotes,
   lapLabel,
   paceFromSpeed,
   pct,
   type ActivityDetail as Detail,
+  type ActivityNote,
   type Lap,
 } from '../lib/activityDetail'
-import { km, paceStr, type Activity } from '../lib/exercise'
+import { fetchActivities, km, paceStr, type Activity } from '../lib/exercise'
 import { SESSION_COLOR, SESSION_LABEL, sessionKind } from '../lib/session'
+import { analyzeSession, type Finding } from '../lib/nsm'
 
 // 훈련 상세 — 캘린더/최근활동에서 넘어온다. 요약 + 랩 분석 + 데이터 추이.
 
@@ -58,6 +61,9 @@ export default function ActivityDetail() {
   const [detailErr, setDetailErr] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [metric, setMetric] = useState<MetricKey>('heartrate')
+  const [notes, setNotes] = useState<ActivityNote[]>([])
+  /** 같은 종류 최근 세션 평균 심박 — "지난번보다 어땠나" 비교용 */
+  const [recentAvgHr, setRecentAvgHr] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,6 +76,8 @@ export default function ActivityDetail() {
         setErr('이 활동을 찾을 수 없습니다. 동기화가 안 됐을 수 있어요.')
         return
       }
+      void fetchActivityNotes(id).then(setNotes)
+      void loadRecentAvg(a).then(setRecentAvgHr)
       // 요약은 떴는데 랩/추이만 실패할 수 있다 — 그 경우 요약이라도 보여준다
       try {
         setDetail(await fetchActivityDetail(id))
@@ -126,6 +134,15 @@ export default function ActivityDetail() {
 
   const meta = METRICS.find((m) => m.key === metric)!
 
+  // 규칙 기반 분석 — LLM 이 아니라 랩·심박 산술이라 바로 계산된다
+  const analysis = useMemo(
+    () =>
+      laps.length
+        ? analyzeSession({ kind, lthr: detail?.lthr ?? null, laps, streams: detail?.streams ?? {}, recentAvgHr })
+        : null,
+    [kind, detail, laps, recentAvgHr],
+  )
+
   if (loading) {
     return (
       <div className="page">
@@ -173,6 +190,41 @@ export default function ActivityDetail() {
               {detail?.lthr && <Kpi label="LTHR" value={`${detail.lthr} bpm`} tone="#f85149" />}
             </div>
           </div>
+
+          {/* ── NSM 규칙 기반 분석 (5.png) — 계산이라 LLM 없이 즉시 나온다 ── */}
+          {analysis && analysis.findings.length > 0 && (
+            <div className="card ad-analysis">
+              <div className="ad-an-head">
+                <span className={`ad-verdict v-${analysis.verdict}`}>{analysis.verdict}</span>
+                <div>
+                  <h3 className="card-title">NSM 규칙 기반 분석</h3>
+                  <p className="muted small">{analysis.headline}</p>
+                </div>
+              </div>
+              <div className="ad-findings">
+                {analysis.findings.map((f, i) => (
+                  <FindingRow key={i} f={f} />
+                ))}
+              </div>
+              <p className="muted small ad-an-note">
+                ※ 랩·심박 데이터에서 계산한 값입니다 (AI 아님). 컨디션·날씨 같은 변수는 반영되지 않습니다.
+              </p>
+            </div>
+          )}
+
+          {/* ── 외부 AI 코멘트 (OpenClaw → Edge Function `note`) ── */}
+          {notes.map((n) => (
+            <div className="card ad-note" key={n.source}>
+              <div className="ad-note-head">
+                <h3 className="card-title">🤖 AI 코멘트</h3>
+                <span className="muted small">
+                  {n.source}
+                  {n.model ? ` · ${n.model}` : ''} · {dayjs(n.updatedAt).format('M/D HH:mm')}
+                </span>
+              </div>
+              <div className="ad-note-body">{n.content}</div>
+            </div>
+          ))}
 
           {detailErr && (
             <div className="sync-msg err">
@@ -317,6 +369,36 @@ export default function ActivityDetail() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * 같은 종류 세션의 최근 평균 심박 (이번 활동 제외).
+ * "지난번 대비 어땠나" 한 줄을 위해 최근 90일치만 본다.
+ */
+async function loadRecentAvg(a: Activity): Promise<number | null> {
+  try {
+    const since = dayjs(a.start_date_local ?? undefined)
+      .subtract(90, 'day')
+      .format('YYYY-MM-DD')
+    const list = await fetchActivities(since)
+    const kind = sessionKind(a)
+    const peers = list
+      .filter((x) => x.external_id !== a.external_id && x.average_hr && sessionKind(x) === kind)
+      .slice(0, 8)
+    if (!peers.length) return null
+    return peers.reduce((s, x) => s + (x.average_hr as number), 0) / peers.length
+  } catch {
+    return null
+  }
+}
+
+function FindingRow({ f }: { f: Finding }) {
+  return (
+    <div className={`ad-finding lv-${f.level}`}>
+      <span className="ad-f-icon">{f.icon}</span>
+      <span>{f.text}</span>
     </div>
   )
 }
