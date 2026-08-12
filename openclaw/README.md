@@ -12,21 +12,53 @@
 바깥에서 집 PC 로 들어갈 일이 없다 — **집 PC 가 밖으로 보내기만** 한다.
 포트포워딩·터널·고정IP 모두 필요 없다.
 
-## 설치 (집 PC, 최초 1회)
+## 원리 (설치랄 게 없다)
 
-**1) 스킬 폴더 복사**
+OpenClaw 스킬에는 레지스트리도 패키지 매니저도 없다. **정해진 폴더에 파일이 있으면 끝**이다.
 
-```bash
-cp -r skills/meos-training ~/.openclaw/workspace/skills/
+```
+~/.openclaw/workspace/skills/meos-training/
+├─ SKILL.md              ← 이게 있으면 스킬로 인식된다
+└─ scripts/meos.mjs
 ```
 
-Windows 라면:
+1. OpenClaw 가 시작할 때 `skills/**/SKILL.md` 를 훑는다
+2. 각 파일의 frontmatter `description` 한 줄이 에이전트 시스템 프롬프트에 들어간다
+3. "오늘 훈련 어때?" 가 그 설명과 맞으면 에이전트가 **SKILL.md 본문을 읽는다**
+4. 본문의 `node {baseDir}/scripts/meos.mjs today` 를 `exec` 로 실행한다
+   (`{baseDir}` 은 그 스킬 폴더 경로로 치환된다)
+
+즉 **파일을 거기 갖다 놓는 것**이 설치의 전부다.
+
+## 설치 (OpenClaw 가 도는 PC, 최초 1회)
+
+⚠️ 이 저장소가 **OpenClaw 가 도는 PC** 에 있어야 한다. 개발 PC 와 다른 기기라면 먼저 옮긴다.
+
+**1) 저장소 받기** — 이후 업데이트가 `git pull` 로 끝나므로 이 방법을 권한다
 
 ```powershell
-Copy-Item -Recurse skills\meos-training "$env:USERPROFILE\.openclaw\workspace\skills\"
+git clone https://github.com/dunkhoon/MeOS.git C:\MeOS      # Private → GitHub 로그인 1회
 ```
 
-**2) 토큰 등록** — `~/.openclaw/openclaw.json`
+클론이 부담되면 **파일 2개만** 옮겨도 된다 (USB·네트워크·클라우드 드라이브 아무거나):
+`SKILL.md` 와 `scripts/meos.mjs`. 폴더 구조만 위와 같으면 동작한다.
+
+집 PC 앞이라면 OpenClaw 에게 직접 시켜도 된다 —
+*"`~/.openclaw/workspace/skills/meos-training/` 만들고 github.com/dunkhoon/MeOS 의
+`openclaw/skills/meos-training` 내용을 복사해줘"*.
+
+**2) 스킬 폴더에 복사**
+
+```powershell
+Copy-Item -Recurse C:\MeOS\openclaw\skills\meos-training "$env:USERPROFILE\.openclaw\workspace\skills\"
+```
+
+```bash
+# macOS / Linux
+cp -r ~/MeOS/openclaw/skills/meos-training ~/.openclaw/workspace/skills/
+```
+
+**3) 토큰 등록** — `~/.openclaw/openclaw.json`
 
 ```jsonc
 {
@@ -43,7 +75,7 @@ Copy-Item -Recurse skills\meos-training "$env:USERPROFILE\.openclaw\workspace\sk
 토큰이 안 먹으면 셸 환경변수로 넣어도 된다 (`export MEOS_NOTE_TOKEN=...`).
 `MEOS_NOTE_URL` 은 기본값이 이 프로젝트 주소라 보통 건드릴 필요 없다.
 
-**3) 반영** — OpenClaw 는 `SKILL.md` 를 감시하지만, 진행 중인 세션에는 안 붙는다.
+**4) 반영** — OpenClaw 는 `SKILL.md` 를 감시하지만, 진행 중인 세션에는 안 붙는다.
 **새 세션을 시작**하거나 게이트웨이를 재시작한다.
 
 ## 확인
