@@ -12,7 +12,6 @@ import {
   saveRoutineOrder,
   saveWorkOrder,
   setRoutineDone,
-  splitTitleAndUrl,
   todayStr,
   trashRoutine,
   trashWorkItem,
@@ -22,6 +21,7 @@ import {
   type WorkList,
   type WorkStatus,
 } from '../lib/work'
+import { issueNo, normalizeUrl, splitTitleAndUrl, workCopyText } from '../lib/workText'
 import { computeReorder } from '../lib/reorder'
 
 /** 상태 칩을 누르면 한 단계씩 진행 → 완료 다음엔 다시 대기로 돈다. */
@@ -43,10 +43,6 @@ function openLink(url: string) {
 
 function sysLabel(s: 'redmine' | 'jira' | null): string {
   return s === 'jira' ? 'JIRA' : 'Redmine'
-}
-
-function issueNo(system: 'redmine' | 'jira' | null, id: string): string {
-  return system === 'jira' ? id : `#${id}`
 }
 
 export default function Tasks() {
@@ -210,8 +206,10 @@ export default function Tasks() {
     }
   }
 
-  const addTo = async (list: WorkList, status: WorkStatus, text: string) => {
-    const { title, url } = splitTitleAndUrl(text)
+  const addTo = async (list: WorkList, status: WorkStatus, text: string, urlInput?: string) => {
+    // URL 칸을 따로 채웠으면 그걸 쓰고, 비었으면 "제목 https://…" 붙여넣기 규칙으로 떼어낸다
+    const parsed = urlInput ? { title: text.trim(), url: normalizeUrl(urlInput) } : splitTitleAndUrl(text)
+    const { title, url } = parsed
     if (!title) return
     try {
       const created = await addWorkItem({ list, status, title, url })
@@ -242,22 +240,42 @@ export default function Tasks() {
   }
 
   // ── 등록한 뒤 수정 (제목 · 링크) ────────────────────────────
-  const [editingId, setEditingId] = useState<string | null>(null)
+  // 제목과 URL 은 따로 고친다 — 한 칸에 섞으면 제목에 공백이 들어간 링크나
+  // 링크만 지우고 싶은 경우를 다루기 어렵다.
+  const [editing, setEditing] = useState<{ id: string; field: 'title' | 'url' } | null>(null)
+  const editingTitleId = editing?.field === 'title' ? editing.id : null
 
-  const saveEdit = async (it: WorkItem, text: string) => {
-    setEditingId(null)
-    const trimmed = text.trim()
-    if (!trimmed) return // 제목을 비우는 건 삭제가 아니므로 무시
-    // BTS 항목은 원본 이슈 링크를 유지하고 제목만 고친다
-    const next = it.origin === 'bts' ? { title: trimmed, url: it.url } : splitTitleAndUrl(trimmed)
-    if (next.title === it.title && next.url === it.url) return
-    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, ...next } : x)))
+  const applyPatch = async (it: WorkItem, patch: Partial<Pick<WorkItem, 'title' | 'url'>>) => {
+    setEditing(null)
+    if ((patch.title ?? it.title) === it.title && (patch.url ?? it.url) === it.url) return
+    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, ...patch } : x)))
     try {
-      await updateWorkItem(it.id, next)
+      await updateWorkItem(it.id, patch)
     } catch (e) {
       setErr(errMsg(e))
       void reload()
     }
+  }
+
+  const saveEdit = async (it: WorkItem, text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed) {
+      setEditing(null)
+      return // 제목을 비우는 건 삭제가 아니므로 무시
+    }
+    // BTS 항목은 원본 이슈 링크를 유지하고 제목만 고친다.
+    // 직접 입력 항목은 "제목 https://…" 를 붙여넣는 습관을 계속 지원한다.
+    if (it.origin === 'bts') {
+      await applyPatch(it, { title: trimmed })
+      return
+    }
+    const next = splitTitleAndUrl(trimmed)
+    // URL 을 안 적었으면 기존 링크는 그대로 둔다 (URL 은 URL 버튼으로 따로 고친다)
+    await applyPatch(it, next.url ? next : { title: next.title })
+  }
+
+  const saveUrl = async (it: WorkItem, text: string) => {
+    await applyPatch(it, { url: normalizeUrl(text) })
   }
 
   // ── 루틴 ───────────────────────────────────────────────────
@@ -366,10 +384,13 @@ export default function Tasks() {
                       key={it.id}
                       item={it}
                       dragging={draggingId === it.id}
-                      editing={editingId === it.id}
-                      onStartEdit={() => setEditingId(it.id)}
+                      editing={editingTitleId === it.id}
+                      editingUrl={editing?.id === it.id && editing.field === 'url'}
+                      onStartEdit={() => setEditing({ id: it.id, field: 'title' })}
+                      onStartEditUrl={() => setEditing({ id: it.id, field: 'url' })}
                       onSaveEdit={(text) => void saveEdit(it, text)}
-                      onCancelEdit={() => setEditingId(null)}
+                      onSaveUrl={(text) => void saveUrl(it, text)}
+                      onCancelEdit={() => setEditing(null)}
                       onCycleStatus={() => void cycleStatus(it)}
                       onDragStart={(e, d) => {
                         setDraggingId(it.id)
@@ -388,7 +409,8 @@ export default function Tasks() {
         <AddForm
           inputRef={progressInput}
           placeholder="진행 중인 업무 직접 추가 (대기로)"
-          onAdd={(t) => void addTo('progress', 'wait', t)}
+          withUrl
+          onAdd={(t, u) => void addTo('progress', 'wait', t, u)}
         />
       </CollapsibleCard>
 
@@ -424,7 +446,7 @@ export default function Tasks() {
                 <div
                   key={it.id}
                   className={`todo-row ${it.done ? 'done' : ''} ${draggingId === it.id ? 'dragging' : ''}`}
-                  draggable={editingId !== it.id}
+                  draggable={editing?.id !== it.id}
                   onDragStart={(e) => {
                     setDraggingId(it.id)
                     startDrag(e, { kind: 'item', id: it.id })
@@ -445,34 +467,33 @@ export default function Tasks() {
                       <span className="wp-id">{issueNo(it.btsSystem, it.btsIssueId ?? '')}</span>
                     </>
                   )}
-                  <RowTitle
-                    item={it}
-                    cls="todo-title"
-                    editing={editingId === it.id}
-                    onStartEdit={() => setEditingId(it.id)}
-                    onSave={(text) => void saveEdit(it, text)}
-                    onCancel={() => setEditingId(null)}
-                  />
-                  {editingId !== it.id && (
+                  {editing?.id === it.id && editing.field === 'url' ? (
+                    <UrlEdit item={it} onSave={(text) => void saveUrl(it, text)} onCancel={() => setEditing(null)} />
+                  ) : (
+                    <RowTitle
+                      item={it}
+                      cls="todo-title"
+                      editing={editingTitleId === it.id}
+                      onStartEdit={() => setEditing({ id: it.id, field: 'title' })}
+                      onSave={(text) => void saveEdit(it, text)}
+                      onCancel={() => setEditing(null)}
+                    />
+                  )}
+                  {editing?.id !== it.id && (
                     <span className="wp-right">
-                      {it.url && (
-                        <button type="button" className="row-icon" title="열기" onClick={() => openLink(it.url!)}>
-                          <LinkIcon />
-                        </button>
-                      )}
-                      <button type="button" className="row-icon edit-btn" title="수정" onClick={() => setEditingId(it.id)}>
-                        <EditIcon />
-                      </button>
-                      <button type="button" className="row-x" title="휴지통으로" onClick={() => void trashItem(it.id)}>
-                        ✕
-                      </button>
+                      <RowActions
+                        item={it}
+                        onEditTitle={() => setEditing({ id: it.id, field: 'title' })}
+                        onEditUrl={() => setEditing({ id: it.id, field: 'url' })}
+                        onTrash={() => void trashItem(it.id)}
+                      />
                     </span>
                   )}
                 </div>
               ))
             )}
           </div>
-          <AddForm placeholder="할 일 추가" onAdd={(t) => void addTo('todo', 'wait', t)} />
+          <AddForm placeholder="할 일 추가" withUrl onAdd={(t, u) => void addTo('todo', 'wait', t, u)} />
         </CollapsibleCard>
 
         <CollapsibleCard
@@ -567,10 +588,12 @@ function RowTitle({
 
 function EditInput({
   initial,
+  placeholder,
   onSave,
   onCancel,
 }: {
   initial: string
+  placeholder?: string
   onSave: (text: string) => void
   onCancel: () => void
 }) {
@@ -581,6 +604,7 @@ function EditInput({
     <input
       className="row-edit"
       value={text}
+      placeholder={placeholder}
       autoFocus
       onChange={(e) => setText(e.target.value)}
       onFocus={(e) => e.currentTarget.select()}
@@ -616,13 +640,95 @@ const LinkIcon = () => (
   </svg>
 )
 
+const CopyIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+)
+
+/** 항목 내용을 클립보드로. BTS 항목은 이슈번호가 앞에 붙는다 (workCopyText). */
+function CopyButton({ item }: { item: WorkItem }) {
+  const [done, setDone] = useState(false)
+  const timer = useRef<number | null>(null)
+
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current) }, [])
+
+  const copy = async () => {
+    const text = workCopyText(item)
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      return // 클립보드 권한이 없으면 조용히 넘어간다 (표시도 하지 않는다)
+    }
+    setDone(true)
+    if (timer.current) window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setDone(false), 1200)
+  }
+
+  return (
+    <button
+      type="button"
+      className={`row-icon copy-btn ${done ? 'copied' : ''}`}
+      title={done ? '복사됨' : `복사: ${workCopyText(item)}`}
+      onClick={() => void copy()}
+    >
+      {done ? '✓' : <CopyIcon />}
+    </button>
+  )
+}
+
+/** 열기 / URL 수정 / 제목 수정 / 삭제 — 두 목록이 같은 버튼을 쓴다. */
+function RowActions({
+  item,
+  onEditTitle,
+  onEditUrl,
+  onTrash,
+}: {
+  item: WorkItem
+  onEditTitle: () => void
+  onEditUrl: () => void
+  onTrash: () => void
+}) {
+  return (
+    <>
+      <CopyButton item={item} />
+      {item.url && (
+        <button type="button" className="row-icon" title="열기" onClick={() => openLink(item.url!)}>
+          <LinkIcon />
+        </button>
+      )}
+      {/* BTS 항목의 링크는 원본 이슈 주소라 손대지 않는다 */}
+      {item.origin !== 'bts' && (
+        <button
+          type="button"
+          className="row-icon url-btn edit-btn"
+          title={item.url ? `URL 수정: ${item.url}` : 'URL 지정'}
+          onClick={onEditUrl}
+        >
+          URL
+        </button>
+      )}
+      <button type="button" className="row-icon edit-btn" title="제목 수정" onClick={onEditTitle}>
+        <EditIcon />
+      </button>
+      <button type="button" className="row-x" title="휴지통으로" onClick={onTrash}>
+        ✕
+      </button>
+    </>
+  )
+}
+
 // ── 진행 중인 업무 한 줄 ─────────────────────────────────────
 function WorkRow({
   item,
   dragging,
   editing,
+  editingUrl,
   onStartEdit,
+  onStartEditUrl,
   onSaveEdit,
+  onSaveUrl,
   onCancelEdit,
   onCycleStatus,
   onDragStart,
@@ -632,8 +738,11 @@ function WorkRow({
   item: WorkItem
   dragging: boolean
   editing: boolean
+  editingUrl: boolean
   onStartEdit: () => void
+  onStartEditUrl: () => void
   onSaveEdit: (text: string) => void
+  onSaveUrl: (text: string) => void
   onCancelEdit: () => void
   onCycleStatus: () => void
   onDragStart: (e: React.DragEvent, d: DragData) => void
@@ -644,7 +753,7 @@ function WorkRow({
     <div
       className={`wp-row ${dragging ? 'dragging' : ''}`}
       // 수정 중엔 입력칸에서 글자를 드래그 선택할 수 있어야 하므로 드래그를 끈다
-      draggable={!editing}
+      draggable={!editing && !editingUrl}
       onDragStart={(e) => onDragStart(e, { kind: 'item', id: item.id })}
       onDragEnd={onDragEnd}
     >
@@ -662,31 +771,53 @@ function WorkRow({
           <span className="wp-id">{issueNo(item.btsSystem, item.btsIssueId ?? '')}</span>
         </>
       )}
-      <RowTitle
-        item={item}
-        cls="wp-title"
-        editing={editing}
-        onStartEdit={onStartEdit}
-        onSave={onSaveEdit}
-        onCancel={onCancelEdit}
-      />
-      {!editing && (
+      {editingUrl ? (
+        <UrlEdit item={item} onSave={onSaveUrl} onCancel={onCancelEdit} />
+      ) : (
+        <RowTitle
+          item={item}
+          cls="wp-title"
+          editing={editing}
+          onStartEdit={onStartEdit}
+          onSave={onSaveEdit}
+          onCancel={onCancelEdit}
+        />
+      )}
+      {!editing && !editingUrl && (
         <span className="wp-right">
           {item.btsVersion && <span className={`chip ver ${/^\d/.test(item.btsVersion) ? 'build' : ''}`}>{item.btsVersion}</span>}
-          {item.url && (
-            <button type="button" className="row-icon" title="열기" onClick={() => openLink(item.url!)}>
-              <LinkIcon />
-            </button>
-          )}
-          <button type="button" className="row-icon edit-btn" title="수정" onClick={onStartEdit}>
-            <EditIcon />
-          </button>
-          <button type="button" className="row-x" title="휴지통으로" onClick={() => onTrash(item.id)}>
-            ✕
-          </button>
+          <RowActions
+            item={item}
+            onEditTitle={onStartEdit}
+            onEditUrl={onStartEditUrl}
+            onTrash={() => onTrash(item.id)}
+          />
         </span>
       )}
     </div>
+  )
+}
+
+/** URL 만 고치는 입력칸. 비우고 저장하면 링크가 사라진다. */
+function UrlEdit({
+  item,
+  onSave,
+  onCancel,
+}: {
+  item: WorkItem
+  onSave: (text: string) => void
+  onCancel: () => void
+}) {
+  return (
+    <span className="row-urledit">
+      <span className="chip url-tag">URL</span>
+      <EditInput
+        initial={item.url ?? ''}
+        placeholder="https://…  (비우면 링크 제거)"
+        onSave={onSave}
+        onCancel={onCancel}
+      />
+    </span>
   )
 }
 
@@ -695,22 +826,38 @@ function AddForm({
   placeholder,
   onAdd,
   inputRef,
+  /** URL 칸 제공 여부 — 루틴에는 링크가 없다 */
+  withUrl = false,
 }: {
   placeholder: string
-  onAdd: (text: string) => void
+  onAdd: (text: string, url?: string) => void
   inputRef?: React.RefObject<HTMLInputElement | null>
+  withUrl?: boolean
 }) {
   const [text, setText] = useState('')
+  const [url, setUrl] = useState('')
+
   const submit = (e: FormEvent) => {
     e.preventDefault()
     const t = text.trim()
     if (!t) return
-    onAdd(t)
+    onAdd(t, url.trim() || undefined)
     setText('')
+    setUrl('')
   }
+
   return (
-    <form className="wp-add" onSubmit={submit}>
+    <form className={`wp-add ${withUrl ? 'with-url' : ''}`} onSubmit={submit}>
       <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} />
+      {withUrl && (
+        <input
+          className="wp-add-url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="URL (선택)"
+          spellCheck={false}
+        />
+      )}
       <button type="submit" disabled={!text.trim()}>
         추가
       </button>

@@ -273,12 +273,3 @@ export async function fetchTrashedRoutines(): Promise<Routine[]> {
 export function isRoutineDone(r: Routine, today = todayStr()): boolean {
   return r.lastDoneOn === today
 }
-
-/** 입력 문자열에서 URL 을 떼어내 제목/링크로 나눈다. ("제목 https://…" 붙여넣기 지원) */
-export function splitTitleAndUrl(text: string): { title: string; url: string | null } {
-  const m = text.match(/https?:\/\/\S+/)
-  if (!m) return { title: text.trim(), url: null }
-  const url = m[0]
-  const title = text.replace(url, '').trim()
-  return { title: title || url, url }
-}
