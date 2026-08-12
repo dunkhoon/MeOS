@@ -9,6 +9,7 @@ MeOS/  (저장소 폴더는 PrivatePlanner)
 ├─ web/         React + TS + Vite (PC·모바일 공용 UI)
 ├─ electron/    데스크톱 셸 — 화면은 배포된 웹에서 불러오고, 창·트레이·p4·BTS 만 담당
 ├─ supabase/    DB 스키마 마이그레이션 + Edge Functions (동기화 · 활동 상세)
+├─ openclaw/    OpenClaw 스킬 (디스코드에서 훈련 분석 → MeOS 자동 등록)
 ├─ docs/        설계 문서
 └─ .env.local   시크릿 (git 제외) — 아래 참고
 ```
@@ -147,6 +148,8 @@ curl -s -X POST "$BASE" -H "x-meos-token: $MEOS_NOTE_TOKEN"   -H 'Content-Type: 
 
 - 같은 활동에 다시 POST 하면 덮어쓴다 (`source` 별로 하나씩 — 기본 `openclaw`).
 - 토큰을 바꾸려면 `npx supabase secrets set MEOS_NOTE_TOKEN=<새 값>`.
+- **OpenClaw 를 쓴다면 위 curl 을 직접 칠 필요 없다** — [`openclaw/`](openclaw/) 에 스킬이 있다.
+  디스코드에서 "오늘 훈련 어때?" 하면 분석하고 MeOS 에 자동으로 올린다.
 - 이 함수만 `verify_jwt = false` 다 — 에이전트에는 사람 세션이 없어서, 대신 함수 안에서
   토큰을 직접(타이밍 안전 비교로) 검사한다.
 
