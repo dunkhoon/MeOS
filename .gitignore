@@ -34,3 +34,6 @@ supabase/.env.secrets
 
 # Supabase CLI 로컬 상태 (link 하면 생김)
 supabase/.temp/
+
+# Garmin 토큰 (러닝화 정보용, 갱신 토큰 포함 — 절대 커밋 금지)
+garmin-tokens.json
