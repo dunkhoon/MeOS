@@ -16,16 +16,24 @@ const CORS = {
 /** 차트에 그릴 점 개수. 3958 포인트를 그대로 보내면 payload 만 커지고 화면은 그대로다. */
 const MAX_POINTS = 700
 
-/** 6.png 의 토글과 같은 항목들 + 지도용 좌표 + 재생 중 "지금까지 몇 km" 를 위한 거리 */
+/**
+ * 그래프에 그리는 항목 + 지도용 좌표 + 툴팁에 한꺼번에 띄우는 러닝 다이내믹스.
+ * 그래프는 한 번에 하나만 그리지만 툴팁은 그 시점의 값을 전부 보여주므로 다 받아야 한다.
+ */
 const STREAM_TYPES = [
   'time',
   'heartrate',
   'velocity_smooth',
   'cadence',
   'watts',
-  'vertical_ratio',
-  'latlng',
+  'altitude',
   'distance',
+  'latlng',
+  // 러닝 다이내믹스 (가민 러닝 워치). 단위: 보행 길이·수직 진폭 mm, 접지 시간 ms, 수직 비율 %
+  'step_length',
+  'vertical_oscillation',
+  'vertical_ratio',
+  'stance_time',
 ] as const
 
 /**

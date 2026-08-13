@@ -3073,9 +3073,10 @@ code {
     height: 300px;
   }
 }
-/* CARTO 가 막혀 기본 OSM 으로 되돌아갔을 때만 — 밝은 타일을 어둡게 눌러 준다 */
-.rm-dim {
-  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+/* '자세히' 지도는 밝은 타일뿐이다. 어두운 테마에서 그대로 두면 화면에서 혼자 튀므로
+   살짝 눌러 준다 — invert 로 뒤집으면 지명·도로색이 다 망가져서 밝기·채도만 건드린다. */
+.rm-soft {
+  filter: brightness(0.82) saturate(0.9) contrast(1.04);
 }
 /* Leaflet 기본 크롬이 흰색이라 어두운 화면에서 혼자 튄다 */
 .ad-map-box .leaflet-container {
@@ -3172,6 +3173,70 @@ code {
 }
 .ad-table tr.lap-future {
   opacity: 0.32;
+}
+/* 랩 행을 누르면 지도에 그 구간이 뜬다 — 누를 수 있다는 걸 보이게 */
+.ad-table tbody tr {
+  cursor: pointer;
+}
+.ad-table tbody tr:hover > td {
+  background: var(--bg-elev);
+}
+.ad-table tr.lap-sel > td {
+  background: color-mix(in srgb, var(--h-yellow) 16%, transparent);
+  box-shadow: inset 2px 0 0 var(--h-yellow);
+}
+
+/* ── 그래프 툴팁 (그 시점의 모든 값) ────── */
+.ad-tip {
+  min-width: 190px;
+  background: var(--tooltip-bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 11px 10px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+}
+.ad-tip-head {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+.ad-tip-grid {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ad-tip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+/* 지금 그리고 있는 항목은 눈에 띄게 */
+.ad-tip-row.on {
+  background: var(--bg-card);
+  font-weight: 600;
+}
+.ad-tip-k {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ad-tip-row.on .ad-tip-k {
+  color: var(--text);
+}
+.ad-tip-k i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+.ad-tip-v {
+  white-space: nowrap;
 }
 .lap-play-badge {
   margin-left: 10px;

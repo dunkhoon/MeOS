@@ -24,7 +24,10 @@ import {
   type ActivityDetail as Detail,
   type ActivityNote,
   type Lap,
+  type StreamKey,
+  type Streams,
 } from '../lib/activityDetail'
+import { METRICS, PLOTTABLE, metric as metricSpec } from '../lib/metrics'
 import { fetchActivities, km, paceStr, type Activity } from '../lib/exercise'
 
 import { PlaybackBar, type Speed } from '../components/exercise/PlaybackBar'
@@ -47,24 +50,8 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/** 6.png 의 토글. intervals.icu 스트림 이름과 표시 방식을 묶어 둔다. */
-type MetricKey = 'heartrate' | 'velocity_smooth' | 'cadence' | 'watts' | 'vertical_ratio'
-interface Metric {
-  key: MetricKey
-  label: string
-  unit: string
-  color: string
-  digits: number
-  /** m/s 를 페이스(분:초/km)로 뒤집어 보여줘야 하는 항목 */
-  pace?: boolean
-}
-const METRICS: Metric[] = [
-  { key: 'heartrate', label: '심박수', unit: 'bpm', color: 'var(--info)', digits: 0 },
-  { key: 'velocity_smooth', label: '페이스', unit: '/km', color: 'var(--ok)', digits: 0, pace: true },
-  { key: 'cadence', label: '케이던스', unit: 'spm', color: 'var(--h-purple)', digits: 0 },
-  { key: 'watts', label: '파워', unit: 'W', color: 'var(--warn)', digits: 0 },
-  { key: 'vertical_ratio', label: '수직비율', unit: '%', color: 'var(--h-cyan)', digits: 1 },
-]
+/** 그래프에 그릴 수 있는 항목. 표시 규칙은 lib/metrics.ts 한 곳에 모아 뒀다. */
+type MetricKey = StreamKey
 
 export default function ActivityDetail() {
   const { id = '' } = useParams()
@@ -84,6 +71,10 @@ export default function ActivityDetail() {
   const [cursor, setCursor] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState<Speed>(1)
+  /** 그래프에 마우스를 올린 지점 — 지도에도 같이 찍는다 */
+  const [hoverT, setHoverT] = useState<number | null>(null)
+  /** 지도에서 강조할 랩 (0-based). 랩 표에서 고른다 */
+  const [selLap, setSelLap] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -142,10 +133,12 @@ export default function ActivityDetail() {
     cursorRef.current = cursor ?? 0
   }, [cursor])
 
-  // 활동이 바뀌면 재생을 처음으로
+  // 활동이 바뀌면 재생·선택을 처음으로
   useEffect(() => {
     setCursor(null)
     setPlaying(false)
+    setHoverT(null)
+    setSelLap(null)
     cursorRef.current = 0
   }, [id])
 
@@ -212,6 +205,13 @@ export default function ActivityDetail() {
   /** 재생 커서가 지금 어느 랩에 있는지 (0-based, -1 이면 재생 아님) */
   const curLap = cursor == null || !laps.length ? -1 : lapAtTime(laps, cursor)
 
+  /** 지도에 강조할 구간 — 고른 랩이 우선, 없으면 재생 중인 랩 */
+  const lapRange = useMemo<[number, number] | null>(() => {
+    const i = selLap ?? -1
+    const l = laps[i]
+    return l ? [l.startT, l.endT] : null
+  }, [selLap, laps])
+
   /** 세션 종류 수동 지정. null 이면 지정을 지우고 이름 추정으로 되돌린다. */
   const saveKind = async (next: SessionKind | null) => {
     if (!act) return
@@ -273,7 +273,7 @@ export default function ActivityDetail() {
     return [lo - pad, hi + pad]
   }, [chartData])
 
-  const meta = METRICS.find((m) => m.key === metric)!
+  const meta = metricSpec(metric)
 
   /** 재생 중 "지나온 부분"만 색이 살아 있는 겹선. 아직 안 온 구간은 null 이라 안 그려진다. */
   const playedData = useMemo(
@@ -433,7 +433,13 @@ export default function ActivityDetail() {
           {/* ── 경로 지도 — GPS 가 있는 활동만 (실내·수동 입력은 빈 배열) ── */}
           {(detail?.route?.length ?? 0) >= 2 && (
             <Suspense fallback={<div className="card ad-map muted small">지도 불러오는 중…</div>}>
-              <RouteMap route={detail!.route} routeT={detail!.routeT} cursor={cursor}>
+              <RouteMap
+                route={detail!.route}
+                routeT={detail!.routeT}
+                cursor={cursor}
+                hoverT={hoverT}
+                lapRange={lapRange}
+              >
                 <PlaybackBar
                   playing={playing}
                   cursor={cursor}
@@ -455,7 +461,7 @@ export default function ActivityDetail() {
               <div className="ad-chart-head">
                 <h3 className="card-title">데이터 추이</h3>
                 <div className="ad-metrics">
-                  {METRICS.map((m) => {
+                  {PLOTTABLE.map((m) => {
                     const has = (detail?.streams?.[m.key] ?? []).some((v) => v != null)
                     return (
                       <button
@@ -473,7 +479,16 @@ export default function ActivityDetail() {
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={chartData} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                <AreaChart
+                  data={chartData}
+                  margin={{ top: 6, right: 12, left: 0, bottom: 0 }}
+                  // 그래프에 올린 지점을 지도에도 찍어 준다
+                  onMouseMove={(s: { activeLabel?: string | number; isTooltipActive?: boolean }) => {
+                    const t = Number(s?.activeLabel)
+                    setHoverT(s?.isTooltipActive && Number.isFinite(t) ? t : null)
+                  }}
+                  onMouseLeave={() => setHoverT(null)}
+                >
                   <defs>
                     <linearGradient id="adFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={meta.color} stopOpacity={0.35} />
@@ -497,7 +512,7 @@ export default function ActivityDetail() {
                     fontSize={11}
                     width={52}
                     domain={domain}
-                    tickFormatter={(v: number) => (meta.pace ? paceFromSpeed(v) : v.toFixed(meta.digits))}
+                    tickFormatter={(v: number) => (meta.tick ?? String)(v)}
                   />
                   {/* 심박수에는 LTHR 기준선을 얹는다 — 어디를 넘었는지가 한눈에 보인다 */}
                   {metric === 'heartrate' && detail?.lthr && (
@@ -509,13 +524,11 @@ export default function ActivityDetail() {
                       label={{ value: `LTHR ${detail.lthr}`, position: 'insideTopRight', fill: 'var(--danger)', fontSize: 11 }}
                     />
                   )}
+                  {/* 그래프는 한 항목만 그리지만, 툴팁에는 그 시점의 값을 전부 보여준다 */}
                   <Tooltip
-                    contentStyle={{ background: 'var(--tooltip-bg)', border: '1px solid var(--grid)', borderRadius: 8, fontSize: 12 }}
-                    labelFormatter={(t) => `경과 ${clock(Number(t))}`}
-                    formatter={(v: number) => [
-                      meta.pace ? `${paceFromSpeed(v)} /km` : `${v.toFixed(meta.digits)} ${meta.unit}`,
-                      meta.label,
-                    ]}
+                    cursor={{ stroke: 'var(--muted)', strokeWidth: 1 }}
+                    isAnimationActive={false}
+                    content={<AllMetricsTooltip times={timeAxis} streams={detail?.streams ?? {}} activeKey={metric} />}
                   />
                   <Area
                     type="monotone"
@@ -548,13 +561,11 @@ export default function ActivityDetail() {
                 </AreaChart>
               </ResponsiveContainer>
               <p className="muted small">
-                {meta.label} — 가로축은 경과 시간. 점이 많아 구간 평균으로 줄여 그립니다.
+                {meta.label} — 가로축은 경과 시간. 그래프에 마우스를 올리면 그 시점의 모든 값과 지도 위치가 함께 표시됩니다.
                 {cursor != null && cursorValue != null && (
                   <>
                     {' · 지금 '}
-                    <b style={{ color: meta.color }}>
-                      {meta.pace ? `${paceFromSpeed(cursorValue)} /km` : `${cursorValue.toFixed(meta.digits)} ${meta.unit}`}
-                    </b>
+                    <b style={{ color: meta.color }}>{meta.fmt(cursorValue)}</b>
                   </>
                 )}
               </p>
@@ -572,6 +583,17 @@ export default function ActivityDetail() {
                   <span className="lap-play-badge">
                     재생 중 · {curLap + 1}/{laps.length}번째 구간
                   </span>
+                )}
+                {selLap != null ? (
+                  <>
+                    {' · '}
+                    <b>{selLap + 1}번 구간</b>을 지도에 표시 중
+                    <button className="link-btn small" style={{ marginLeft: 8 }} onClick={() => setSelLap(null)}>
+                      선택 해제
+                    </button>
+                  </>
+                ) : (
+                  ' · 행을 누르면 그 구간이 지도에 표시됩니다'
                 )}
               </p>
               <div className="ad-table-wrap">
@@ -598,6 +620,8 @@ export default function ActivityDetail() {
                         lthr={detail?.lthr ?? null}
                         // 재생 중이면 지금 구간을 강조하고, 아직 안 온 구간은 흐리게
                         play={cursor == null ? null : l.index - 1 === curLap ? 'now' : l.startT > cursor ? 'future' : 'past'}
+                        selected={selLap === l.index - 1}
+                        onSelect={() => setSelLap((p) => (p === l.index - 1 ? null : l.index - 1))}
                       />
                     ))}
                   </tbody>
@@ -660,10 +684,71 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: stri
   )
 }
 
-function LapRow({ lap, lthr, play }: { lap: Lap; lthr: number | null; play: 'now' | 'past' | 'future' | null }) {
+/** 그 시점의 모든 값을 한 번에 보여주는 툴팁. 그래프는 하나만 그려도 몸은 전부 기록되어 있다. */
+function AllMetricsTooltip({
+  times,
+  streams,
+  activeKey,
+  label,
+  payload,
+}: {
+  times: number[]
+  streams: Streams
+  /** 지금 그래프에 그리는 항목. ⚠️ `active` 라고 이름 붙이면 안 된다 —
+   *  Recharts 가 content 를 복제하며 자기 `active`(boolean)로 덮어써 버린다. */
+  activeKey: StreamKey
+  // Recharts 가 넣어 주는 값들 (직접 넘기지 않는다)
+  label?: number
+  payload?: unknown[]
+}) {
+  if (!payload?.length || label == null) return null
+  const t = Number(label)
+  const rows = METRICS.map((m) => {
+    let v = sampleAt(times, streams[m.key], t)
+    // 멈춰 있던 구간의 페이스는 무한대로 튄다 — 값 없음으로 둔다
+    if (m.key === 'velocity_smooth' && v != null && v < 0.5) v = null
+    return { m, v }
+  }).filter((r) => r.v != null)
+  if (!rows.length) return null
+
+  return (
+    <div className="ad-tip">
+      <div className="ad-tip-head">경과 {clock(t)}</div>
+      <div className="ad-tip-grid">
+        {rows.map(({ m, v }) => (
+          <div key={m.key} className={`ad-tip-row ${m.key === activeKey ? 'on' : ''}`}>
+            <span className="ad-tip-k">
+              <i style={{ background: m.color ?? 'var(--muted)' }} />
+              {m.label}
+            </span>
+            <span className="ad-tip-v">{m.fmt(v as number)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function LapRow({
+  lap,
+  lthr,
+  play,
+  selected,
+  onSelect,
+}: {
+  lap: Lap
+  lthr: number | null
+  play: 'now' | 'past' | 'future' | null
+  selected: boolean
+  onSelect: () => void
+}) {
   const isWork = /work/i.test(lap.type)
   return (
-    <tr className={`${isWork ? 'work' : 'rest'}${play ? ` lap-${play}` : ''}`}>
+    <tr
+      className={`${isWork ? 'work' : 'rest'}${play ? ` lap-${play}` : ''}${selected ? ' lap-sel' : ''}`}
+      onClick={onSelect}
+      title="지도에서 이 구간을 표시합니다"
+    >
       <td className="muted">{lap.index}</td>
       <td>
         <span className={`chip lap-${isWork ? 'work' : 'rest'}`}>{lapLabel(lap)}</span>

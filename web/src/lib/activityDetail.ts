@@ -28,9 +28,20 @@ export interface Lap {
 }
 
 /** 다운샘플된 시계열. 키는 intervals.icu 스트림 이름. */
-export type Streams = Partial<
-  Record<'time' | 'heartrate' | 'velocity_smooth' | 'cadence' | 'watts' | 'vertical_ratio' | 'distance', (number | null)[]>
->
+export type StreamKey =
+  | 'time'
+  | 'heartrate'
+  | 'velocity_smooth'
+  | 'cadence'
+  | 'watts'
+  | 'altitude'
+  | 'distance'
+  | 'step_length'
+  | 'vertical_oscillation'
+  | 'vertical_ratio'
+  | 'stance_time'
+
+export type Streams = Partial<Record<StreamKey, (number | null)[]>>
 
 /** GPS 경로 — [위도, 경도] 쌍. 실내 운동이나 GPS 없는 활동은 빈 배열. */
 export type Route = [number, number][]
