@@ -13,6 +13,9 @@ export interface Lap {
   /** intervals.icu 가 묶어준 반복 그룹 (같은 값 = 같은 세트) */
   groupId: string | null
   label: string | null
+  /** 이 랩이 시작·끝난 경과 시간(초). 재생 커서와 맞추는 데 쓴다 */
+  startT: number
+  endT: number
   movingTime: number
   distance: number
   /** m/s */
@@ -25,7 +28,9 @@ export interface Lap {
 }
 
 /** 다운샘플된 시계열. 키는 intervals.icu 스트림 이름. */
-export type Streams = Partial<Record<'time' | 'heartrate' | 'velocity_smooth' | 'cadence' | 'watts' | 'vertical_ratio', (number | null)[]>>
+export type Streams = Partial<
+  Record<'time' | 'heartrate' | 'velocity_smooth' | 'cadence' | 'watts' | 'vertical_ratio' | 'distance', (number | null)[]>
+>
 
 /** GPS 경로 — [위도, 경도] 쌍. 실내 운동이나 GPS 없는 활동은 빈 배열. */
 export type Route = [number, number][]
@@ -36,6 +41,8 @@ export interface ActivityDetail {
   laps: Lap[]
   streams: Streams
   route: Route
+  /** route 각 점의 경과 시간(초). route 와 길이가 같다. */
+  routeT: number[]
 }
 
 const ACT_COLS =
@@ -71,6 +78,7 @@ export async function fetchActivityDetail(externalId: string): Promise<ActivityD
     streams: data.streams ?? {},
     // 함수를 아직 새로 배포하지 않았으면 route 가 없다 — 지도만 빠지고 나머지는 그대로 뜬다
     route: data.route ?? [],
+    routeT: data.routeT ?? [],
   }
 }
 

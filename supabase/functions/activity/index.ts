@@ -16,8 +16,17 @@ const CORS = {
 /** 차트에 그릴 점 개수. 3958 포인트를 그대로 보내면 payload 만 커지고 화면은 그대로다. */
 const MAX_POINTS = 700
 
-/** 6.png 의 토글과 같은 항목들 + 지도용 좌표 */
-const STREAM_TYPES = ['time', 'heartrate', 'velocity_smooth', 'cadence', 'watts', 'vertical_ratio', 'latlng'] as const
+/** 6.png 의 토글과 같은 항목들 + 지도용 좌표 + 재생 중 "지금까지 몇 km" 를 위한 거리 */
+const STREAM_TYPES = [
+  'time',
+  'heartrate',
+  'velocity_smooth',
+  'cadence',
+  'watts',
+  'vertical_ratio',
+  'latlng',
+  'distance',
+] as const
 
 /**
  * 지도 선을 그릴 좌표 개수. 초당 1점이라 1시간이면 3600점인데 그걸 다 보낼 필요는 없다.
@@ -60,13 +69,17 @@ Deno.serve(async (req) => {
       icu(`/activity/${id}/streams?types=${STREAM_TYPES.join(',')}`).catch(() => null),
     ])
 
+    // 랩·경로 모두 "경과 시간(초)" 으로 맞춰 준다 — 그래야 화면에서 지도·그래프·랩이 같이 움직인다.
+    // 기준은 원본 time 스트림. 랩의 start_index/end_index 가 이 배열의 인덱스다.
+    const rawTime = pickStream(stRes, 'time')
+
     return json({
       ok: true,
       lthr: detail?.lthr ?? null,
       maxHr: detail?.max_hr ?? detail?.icu_max_hr ?? null,
-      laps: (ivRes?.icu_intervals ?? []).map(toLap),
+      laps: (ivRes?.icu_intervals ?? []).map((l: Record<string, unknown>, i: number) => toLap(l, i, rawTime)),
       streams: toStreams(stRes),
-      route: toRoute(stRes),
+      ...toRoute(stRes, rawTime),
     })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -81,6 +94,9 @@ interface Lap {
   /** intervals.icu 가 묶어준 반복 그룹 (같은 값 = 같은 세트). 워밍업/반복/회복 구분에 쓴다 */
   groupId: string | null
   label: string | null
+  /** 이 랩이 시작·끝난 **경과 시간(초)**. 재생 커서와 맞추는 데 쓴다 */
+  startT: number
+  endT: number
   movingTime: number
   distance: number
   /** m/s — 페이스 계산은 화면에서 */
@@ -92,13 +108,21 @@ interface Lap {
   watts: number | null
 }
 
-function toLap(l: Record<string, unknown>, i: number): Lap {
+function toLap(l: Record<string, unknown>, i: number, time: number[]): Lap {
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  // 인덱스 → 경과 시간. 스트림이 없으면 인덱스를 초로 쓴다 (1Hz 기록이라 거의 같다)
+  const at = (idx: unknown) => {
+    const n = num(idx)
+    if (n == null) return null
+    return time.length ? (time[Math.min(Math.max(0, Math.round(n)), time.length - 1)] ?? n) : n
+  }
   return {
     index: i + 1,
     type: String(l.type ?? ''),
     groupId: (l.group_id as string) ?? null,
     label: (l.label as string) ?? null,
+    startT: at(l.start_index) ?? 0,
+    endT: at(l.end_index) ?? 0,
     movingTime: num(l.moving_time) ?? 0,
     distance: num(l.distance) ?? 0,
     speed: num(l.average_speed),
@@ -148,34 +172,47 @@ function toStreams(raw: unknown): Record<string, (number | null)[]> {
   return out
 }
 
+/** 스트림 하나의 원본 숫자 배열. 없으면 빈 배열. */
+function pickStream(raw: unknown, type: string): number[] {
+  if (!Array.isArray(raw)) return []
+  const s = raw.find((x) => (x as { type?: string })?.type === type) as { data?: unknown[] } | undefined
+  if (!Array.isArray(s?.data)) return []
+  return s.data.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0))
+}
+
 /**
  * GPS 경로. intervals.icu 의 latlng 스트림은 위도가 `data`, 경도가 `data2` 로 따로 온다.
  *
  * 점을 솎아낼 때 평균이 아니라 **건너뛰기**를 쓴다 — 좌표는 평균 내면 코너가 잘려
  * 실제로 지나지 않은 곳을 가로지르는 선이 된다. 마지막 점은 항상 남겨 경로가 중간에 끊기지 않게 한다.
  * 소수점 5자리 ≈ 1m — 화면에 그리기엔 충분하고 전송량은 절반이 된다.
+ *
+ * 각 점의 **경과 시간(routeT)** 도 같이 준다 — 재생할 때 "지금 어디쯤" 을 찍으려면 필요하다.
  */
-function toRoute(raw: unknown): [number, number][] {
-  if (!Array.isArray(raw)) return []
+function toRoute(raw: unknown, time: number[]): { route: [number, number][]; routeT: number[] } {
+  const empty = { route: [] as [number, number][], routeT: [] as number[] }
+  if (!Array.isArray(raw)) return empty
   const s = raw.find((x) => (x as { type?: string })?.type === 'latlng') as
     | { data?: unknown[]; data2?: unknown[] }
     | undefined
   const lat = s?.data
   const lng = s?.data2
-  if (!Array.isArray(lat) || !Array.isArray(lng)) return []
+  if (!Array.isArray(lat) || !Array.isArray(lng)) return empty
 
   const len = Math.min(lat.length, lng.length)
   const step = Math.max(1, Math.ceil(len / MAX_ROUTE_POINTS))
-  const out: [number, number][] = []
+  const route: [number, number][] = []
+  const routeT: number[] = []
   const push = (i: number) => {
     const a = lat[i]
     const b = lng[i]
     // GPS 가 끊긴 구간은 null 또는 정확히 0,0 (기니만 앞바다) 으로 온다
     if (typeof a !== 'number' || typeof b !== 'number') return
     if (!Number.isFinite(a) || !Number.isFinite(b) || (a === 0 && b === 0)) return
-    out.push([Math.round(a * 1e5) / 1e5, Math.round(b * 1e5) / 1e5])
+    route.push([Math.round(a * 1e5) / 1e5, Math.round(b * 1e5) / 1e5])
+    routeT.push(time[i] ?? i)
   }
   for (let i = 0; i < len; i += step) push(i)
   if ((len - 1) % step !== 0) push(len - 1)
-  return out
+  return { route, routeT }
 }

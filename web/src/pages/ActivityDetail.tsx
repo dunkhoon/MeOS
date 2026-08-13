@@ -1,10 +1,11 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -26,8 +27,16 @@ import {
 } from '../lib/activityDetail'
 import { fetchActivities, km, paceStr, type Activity } from '../lib/exercise'
 
+import { PlaybackBar, type Speed } from '../components/exercise/PlaybackBar'
+import { advance, lapAtTime, sampleAt } from '../lib/playback'
+
 // 지도(leaflet)는 150KB 가 넘는데 GPS 있는 활동에서만 쓴다 — 필요할 때만 받아 온다
 const RouteMap = lazy(() => import('../components/exercise/RouteMap').then((m) => ({ default: m.RouteMap })))
+
+/** 1배속에서 활동 전체를 재생하는 데 걸리는 시간(초). 1시간 러닝도 30초면 다 본다. */
+const PLAY_SECONDS = 30
+/** 커서 갱신 주기. 60fps 로 돌리면 Recharts 가 매 프레임 다시 그려 버벅인다. */
+const TICK_MS = 60
 import { SESSION_COLOR, SESSION_KINDS, SESSION_LABEL, isManualKind, sessionKind, type SessionKind } from '../lib/session'
 import { analyzeSession, type Finding } from '../lib/nsm'
 
@@ -70,6 +79,10 @@ export default function ActivityDetail() {
   const [recent, setRecent] = useState<Activity[]>([])
   const [savingKind, setSavingKind] = useState(false)
   const [kindErr, setKindErr] = useState<string | null>(null)
+  /** 재생 커서 (경과 초). null = 재생 전 — 지도·그래프·랩이 모두 이 값을 본다 */
+  const [cursor, setCursor] = useState<number | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed] = useState<Speed>(1)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -104,6 +117,99 @@ export default function ActivityDetail() {
   const kind = act ? sessionKind(act) : 'other'
   const manual = act ? isManualKind(act) : false
   const laps = detail?.laps ?? []
+
+  // ── 재생 ────────────────────────────────────────────────
+  /** 스트림의 경과 시간축. 값이 비면 인덱스를 초로 대신 쓴다. */
+  const timeAxis = useMemo(
+    () => (detail?.streams?.time ?? []).map((v, i) => (typeof v === 'number' ? v : i)),
+    [detail],
+  )
+  // 셋의 끝이 조금씩 다르다 — 추이는 다운샘플돼 마지막 점이 잘리고, 경로·랩은 원본 기준이다.
+  // 가장 늦은 끝을 쓰지 않으면 마지막 몇 초가 재생되지 않는다.
+  const total = useMemo(() => {
+    const end = Math.max(
+      timeAxis.length ? timeAxis[timeAxis.length - 1] : 0,
+      detail?.routeT?.length ? detail.routeT[detail.routeT.length - 1] : 0,
+      laps.length ? laps[laps.length - 1].endT : 0,
+    )
+    return end > 0 ? end : (act?.moving_time_s ?? 0)
+  }, [timeAxis, detail, laps, act])
+
+  // rAF 안에서 최신 커서를 읽어야 하는데 state 는 클로저에 갇힌다
+  const cursorRef = useRef(0)
+  useEffect(() => {
+    cursorRef.current = cursor ?? 0
+  }, [cursor])
+
+  // 활동이 바뀌면 재생을 처음으로
+  useEffect(() => {
+    setCursor(null)
+    setPlaying(false)
+    cursorRef.current = 0
+  }, [id])
+
+  useEffect(() => {
+    if (!playing || total <= 0) return
+    let raf = 0
+    let last = performance.now()
+    let acc = 0
+    const step = (now: number) => {
+      acc += now - last
+      last = now
+      if (acc >= TICK_MS) {
+        const next = advance(cursorRef.current, acc, total, speed, PLAY_SECONDS)
+        acc = 0
+        cursorRef.current = next
+        setCursor(next)
+        if (next >= total) setPlaying(false)
+      }
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [playing, total, speed])
+
+  const togglePlay = () => {
+    if (playing) {
+      setPlaying(false)
+      return
+    }
+    // 끝까지 본 뒤 다시 누르면 처음부터
+    if (cursor == null || cursor >= total) {
+      cursorRef.current = 0
+      setCursor(0)
+    }
+    setPlaying(true)
+  }
+  const stopPlay = () => {
+    setPlaying(false)
+    cursorRef.current = 0
+    setCursor(null)
+  }
+  const seek = (t: number) => {
+    cursorRef.current = t
+    setCursor(t)
+  }
+
+  /** 재생 중 지금 값 — 조작줄에 띄운다 */
+  const readout = useMemo(() => {
+    if (cursor == null) return null
+    const s = detail?.streams
+    const v = sampleAt(timeAxis, s?.velocity_smooth, cursor)
+    return {
+      distanceM: sampleAt(timeAxis, s?.distance, cursor),
+      totalM: act?.distance_m ?? null,
+      // 멈춰 있던 구간은 페이스가 무한대로 튄다
+      pace: paceFromSpeed(v != null && v >= 0.5 ? v : null),
+      hr: sampleAt(timeAxis, s?.heartrate, cursor),
+      cadence: sampleAt(timeAxis, s?.cadence, cursor),
+      lapNow: laps.length ? lapAtTime(laps, cursor) + 1 : 0,
+      lapTotal: laps.length,
+    }
+  }, [cursor, detail, timeAxis, act, laps])
+
+  /** 재생 커서가 지금 어느 랩에 있는지 (0-based, -1 이면 재생 아님) */
+  const curLap = cursor == null || !laps.length ? -1 : lapAtTime(laps, cursor)
 
   /** 세션 종류 수동 지정. null 이면 지정을 지우고 이름 추정으로 되돌린다. */
   const saveKind = async (next: SessionKind | null) => {
@@ -167,6 +273,19 @@ export default function ActivityDetail() {
   }, [chartData])
 
   const meta = METRICS.find((m) => m.key === metric)!
+
+  /** 재생 중 "지나온 부분"만 색이 살아 있는 겹선. 아직 안 온 구간은 null 이라 안 그려진다. */
+  const playedData = useMemo(
+    () => (cursor == null ? null : chartData.map((d) => ({ t: d.t, v: d.t <= cursor ? d.v : null }))),
+    [chartData, cursor],
+  )
+  /** 커서 위치의 값 — 그래프 위에 점을 찍는다 */
+  const cursorValue = useMemo(() => {
+    if (cursor == null) return null
+    let v = sampleAt(timeAxis, detail?.streams?.[metric], cursor)
+    if (metric === 'velocity_smooth' && v != null && v < 0.5) v = null
+    return v
+  }, [cursor, detail, metric, timeAxis])
 
   // 규칙 기반 분석 — LLM 이 아니라 랩·심박 산술이라 바로 계산된다
   const analysis = useMemo(
@@ -313,7 +432,19 @@ export default function ActivityDetail() {
           {/* ── 경로 지도 — GPS 가 있는 활동만 (실내·수동 입력은 빈 배열) ── */}
           {(detail?.route?.length ?? 0) >= 2 && (
             <Suspense fallback={<div className="card ad-map muted small">지도 불러오는 중…</div>}>
-              <RouteMap route={detail!.route} />
+              <RouteMap route={detail!.route} routeT={detail!.routeT} cursor={cursor}>
+                <PlaybackBar
+                  playing={playing}
+                  cursor={cursor}
+                  total={total}
+                  speed={speed}
+                  readout={readout}
+                  onToggle={togglePlay}
+                  onStop={stopPlay}
+                  onSeek={seek}
+                  onSpeed={setSpeed}
+                />
+              </RouteMap>
             </Suspense>
           )}
 
@@ -349,8 +480,12 @@ export default function ActivityDetail() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke="#232733" vertical={false} />
+                  {/* 숫자 축이라야 재생 커서(ReferenceLine/Dot)를 임의 위치에 놓을 수 있다.
+                      category 축이면 x 가 데이터 값과 정확히 일치해야만 그려진다. */}
                   <XAxis
                     dataKey="t"
+                    type="number"
+                    domain={[0, Math.max(1, total)]}
                     tickFormatter={(t: number) => clock(t)}
                     stroke="#6f7688"
                     fontSize={11}
@@ -384,17 +519,43 @@ export default function ActivityDetail() {
                   <Area
                     type="monotone"
                     dataKey="v"
-                    stroke={meta.color}
+                    // 재생 중에는 전체 선을 죽이고, 지나온 부분만 아래 겹선으로 살린다
+                    stroke={cursor == null ? meta.color : '#39404f'}
                     strokeWidth={1.6}
-                    fill="url(#adFill)"
+                    fill={cursor == null ? 'url(#adFill)' : 'none'}
                     dot={false}
                     connectNulls
                     isAnimationActive={false}
                   />
+                  {playedData && (
+                    <Area
+                      type="monotone"
+                      data={playedData}
+                      dataKey="v"
+                      stroke={meta.color}
+                      strokeWidth={1.8}
+                      fill="url(#adFill)"
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  )}
+                  {cursor != null && <ReferenceLine x={cursor} stroke="#e6e8ee" strokeOpacity={0.55} />}
+                  {cursor != null && cursorValue != null && (
+                    <ReferenceDot x={cursor} y={cursorValue} r={4.5} fill={meta.color} stroke="#0b0d12" strokeWidth={2} />
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
               <p className="muted small">
                 {meta.label} — 가로축은 경과 시간. 점이 많아 구간 평균으로 줄여 그립니다.
+                {cursor != null && cursorValue != null && (
+                  <>
+                    {' · 지금 '}
+                    <b style={{ color: meta.color }}>
+                      {meta.pace ? `${paceFromSpeed(cursorValue)} /km` : `${cursorValue.toFixed(meta.digits)} ${meta.unit}`}
+                    </b>
+                  </>
+                )}
               </p>
             </div>
           )}
@@ -406,6 +567,11 @@ export default function ActivityDetail() {
               <p className="muted small">
                 총 {laps.length}개 구간 · 그중 훈련 구간 {workLaps.length}개
                 {detail?.lthr ? ` · LTHR ${detail.lthr}bpm 기준` : ''}
+                {curLap >= 0 && (
+                  <span className="lap-play-badge">
+                    재생 중 · {curLap + 1}/{laps.length}번째 구간
+                  </span>
+                )}
               </p>
               <div className="ad-table-wrap">
                 <table className="ad-table">
@@ -425,7 +591,13 @@ export default function ActivityDetail() {
                   </thead>
                   <tbody>
                     {laps.map((l) => (
-                      <LapRow key={l.index} lap={l} lthr={detail?.lthr ?? null} />
+                      <LapRow
+                        key={l.index}
+                        lap={l}
+                        lthr={detail?.lthr ?? null}
+                        // 재생 중이면 지금 구간을 강조하고, 아직 안 온 구간은 흐리게
+                        play={cursor == null ? null : l.index - 1 === curLap ? 'now' : l.startT > cursor ? 'future' : 'past'}
+                      />
                     ))}
                   </tbody>
                   <tfoot>
@@ -487,10 +659,10 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: stri
   )
 }
 
-function LapRow({ lap, lthr }: { lap: Lap; lthr: number | null }) {
+function LapRow({ lap, lthr, play }: { lap: Lap; lthr: number | null; play: 'now' | 'past' | 'future' | null }) {
   const isWork = /work/i.test(lap.type)
   return (
-    <tr className={isWork ? 'work' : 'rest'}>
+    <tr className={`${isWork ? 'work' : 'rest'}${play ? ` lap-${play}` : ''}`}>
       <td className="muted">{lap.index}</td>
       <td>
         <span className={`chip lap-${isWork ? 'work' : 'rest'}`}>{lapLabel(lap)}</span>

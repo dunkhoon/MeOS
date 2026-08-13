@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { indexAtTime } from '../../lib/playback'
 import type { Route } from '../../lib/activityDetail'
 
 // 활동 경로 지도 — intervals.icu 의 latlng 스트림을 그대로 선으로 그린다.
@@ -10,6 +11,9 @@ import type { Route } from '../../lib/activityDetail'
 //
 // 마커는 L.marker 가 아니라 circleMarker 다 — L.marker 는 아이콘 PNG 를 따로 요구해서
 // 번들러마다 경로가 깨진다. 원 마커는 SVG 라 그런 문제가 없다.
+//
+// `cursor`(경과 시간, 초)가 들어오면 재생 모드가 된다: 지나온 구간만 색이 살고
+// 현재 위치에 점이 붙는다. null 이면 평소처럼 전체 경로.
 
 const DARK = {
   url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -20,10 +24,28 @@ const PLAIN = {
   options: { maxZoom: 19, attribution: '© OpenStreetMap' },
 }
 
-export function RouteMap({ route }: { route: Route }) {
+const TRACK = '#ff6b35'
+/** 재생 중 아직 안 지난 구간 — 있는 건 보이되 눈에 덜 띄게 */
+const AHEAD = '#4d5566'
+
+export function RouteMap({
+  route,
+  routeT,
+  cursor,
+  children,
+}: {
+  route: Route
+  routeT: number[]
+  /** 재생 커서(경과 초). null 이면 재생 아님 */
+  cursor: number | null
+  /** 지도 아래에 붙일 재생 조작줄 */
+  children?: ReactNode
+}) {
   const boxRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const lineRef = useRef<L.Polyline | null>(null)
+  const doneRef = useRef<L.Polyline | null>(null)
+  const headRef = useRef<L.CircleMarker | null>(null)
   /** 휠 확대는 기본으로 꺼 둔다 — 페이지를 스크롤하다 지도 위를 지나면 화면이 멋대로 확대된다 */
   const [wheel, setWheel] = useState(false)
 
@@ -31,11 +53,7 @@ export function RouteMap({ route }: { route: Route }) {
     const box = boxRef.current
     if (!box || route.length < 2) return
 
-    const map = L.map(box, {
-      zoomControl: true,
-      scrollWheelZoom: false,
-      attributionControl: true,
-    })
+    const map = L.map(box, { zoomControl: true, scrollWheelZoom: false, attributionControl: true })
     mapRef.current = map
 
     let tileOk = false
@@ -54,8 +72,10 @@ export function RouteMap({ route }: { route: Route }) {
 
     // 밑에 어두운 선을 깔아 밝은 길 위에서도 경로가 보이게 한다
     L.polyline(route, { color: '#0b0d12', weight: 7, opacity: 0.5, lineJoin: 'round' }).addTo(map)
-    const line = L.polyline(route, { color: '#ff6b35', weight: 4, opacity: 0.95, lineJoin: 'round' }).addTo(map)
+    const line = L.polyline(route, { color: TRACK, weight: 4, opacity: 0.95, lineJoin: 'round' }).addTo(map)
     lineRef.current = line
+    // 지나온 구간 — 재생 중에만 좌표가 채워진다
+    doneRef.current = L.polyline([], { color: TRACK, weight: 5, opacity: 1, lineJoin: 'round' }).addTo(map)
 
     L.circleMarker(route[0], { radius: 6, color: '#0b0d12', weight: 2, fillColor: '#3fb950', fillOpacity: 1 })
       .addTo(map)
@@ -70,6 +90,17 @@ export function RouteMap({ route }: { route: Route }) {
       .addTo(map)
       .bindTooltip('도착')
 
+    // 현재 위치 — 재생 중에만 보인다
+    headRef.current = L.circleMarker(route[0], {
+      radius: 7,
+      color: '#fff',
+      weight: 2.5,
+      fillColor: TRACK,
+      fillOpacity: 1,
+      // 지나온 선 위에 오도록
+      pane: 'markerPane',
+    })
+
     map.fitBounds(line.getBounds(), { padding: [24, 24] })
 
     // 카드 폭이 바뀌면(창 크기·사이드바) 지도가 회색으로 잘린 채 남는다
@@ -81,8 +112,31 @@ export function RouteMap({ route }: { route: Route }) {
       map.remove()
       mapRef.current = null
       lineRef.current = null
+      doneRef.current = null
+      headRef.current = null
     }
   }, [route])
+
+  // 커서가 움직일 때마다 지나온 구간·현재 위치만 갱신한다 (지도를 다시 만들지 않는다)
+  useEffect(() => {
+    const map = mapRef.current
+    const line = lineRef.current
+    const done = doneRef.current
+    const head = headRef.current
+    if (!map || !line || !done || !head) return
+
+    if (cursor == null) {
+      line.setStyle({ color: TRACK, opacity: 0.95 })
+      done.setLatLngs([])
+      if (map.hasLayer(head)) map.removeLayer(head)
+      return
+    }
+    const i = Math.max(0, indexAtTime(routeT.length ? routeT : route.map((_, n) => n), cursor))
+    line.setStyle({ color: AHEAD, opacity: 0.75 })
+    done.setLatLngs(route.slice(0, i + 1))
+    head.setLatLng(route[i])
+    if (!map.hasLayer(head)) head.addTo(map)
+  }, [cursor, route, routeT])
 
   useEffect(() => {
     const map = mapRef.current
@@ -118,6 +172,7 @@ export function RouteMap({ route }: { route: Route }) {
         </div>
       </div>
       <div className="ad-map-box" ref={boxRef} />
+      {children}
       <p className="muted small">GPS 기록 {route.length}점 · 지도 데이터 © OpenStreetMap 기여자</p>
     </div>
   )
