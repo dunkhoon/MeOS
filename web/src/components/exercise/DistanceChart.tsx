@@ -76,7 +76,7 @@ export function DistanceChart({ activities, types }: { activities: Activity[]; t
     </div>
   )
 
-  const tooltipStyle = { background: '#1b1e27', border: '1px solid #262a35', borderRadius: 8, color: '#e6e8ee' }
+  const tooltipStyle = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }
 
   return (
     <CollapsibleCard
@@ -92,9 +92,9 @@ export function DistanceChart({ activities, types }: { activities: Activity[]; t
         hasDist ? (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={distData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid stroke="#262a35" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#8b90a0', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
-              <YAxis tick={{ fill: '#8b90a0', fontSize: 11 }} />
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
+              <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} />
               <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} content={<DistanceTooltip />} />
               {types.map((t) => (
                 <Bar key={t} dataKey={t} stackId="dist" fill={typeColor(t)} />
@@ -107,9 +107,9 @@ export function DistanceChart({ activities, types }: { activities: Activity[]; t
       ) : hasZone ? (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={zoneData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-            <CartesianGrid stroke="#262a35" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: '#8b90a0', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
-            <YAxis tick={{ fill: '#8b90a0', fontSize: 11 }} domain={[0, 100]} unit="%" />
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
+            <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} domain={[0, 100]} unit="%" />
             <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={tooltipStyle} formatter={(v: number, name: string) => [`${v}%`, name]} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {HR_ZONES.map((z) => (

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { alpha } from '../lib/color'
 import dayjs from 'dayjs'
 import { fetchEvents, type CalEvent } from '../lib/calendar'
 
@@ -107,7 +108,7 @@ export default function Calendar() {
                     <div
                       key={e.id}
                       className="cal-ev"
-                      style={{ background: (e.color ?? '#ff6b35') + '33', color: e.color ?? '#ff6b35' }}
+                      style={{ background: alpha(e.color ?? 'var(--accent)', 20), color: e.color ?? 'var(--accent)' }}
                       title={`${fmtTime(e)} ${e.title}`}
                       onClick={() => setSelected(e)}
                     >
@@ -133,7 +134,7 @@ export default function Calendar() {
         ) : (
           agenda.map((e) => (
             <div key={e.id} className="agenda-row" onClick={() => setSelected(e)}>
-              <span className="agenda-dot" style={{ background: e.color ?? '#ff6b35' }} />
+              <span className="agenda-dot" style={{ background: e.color ?? 'var(--accent)' }} />
               <span className="agenda-date">{dayjs(e.start_at).format('M/D (ddd)')}</span>
               <span className="agenda-time">{fmtTime(e)}</span>
               <span className="agenda-title">{e.title}</span>
@@ -187,7 +188,7 @@ function DayModal({
           {events.length === 0 && <p className="muted small">일정 없음</p>}
           {events.map((e) => (
             <button key={e.id} className="day-ev" onClick={() => onPick(e)}>
-              <span className="agenda-dot" style={{ background: e.color ?? '#ff6b35' }} />
+              <span className="agenda-dot" style={{ background: e.color ?? 'var(--accent)' }} />
               <span className="agenda-time">{fmtTime(e)}</span>
               <span className="agenda-title">{e.title}</span>
             </button>
@@ -233,7 +234,7 @@ function EventModal({ event, onClose }: { event: CalEvent; onClose: () => void }
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="ev-modal-head">
-          <span className="ev-modal-dot" style={{ background: event.color ?? '#ff6b35' }} />
+          <span className="ev-modal-dot" style={{ background: event.color ?? 'var(--accent)' }} />
           <h3>{event.title}</h3>
         </div>
         <div className="ev-modal-when">{when}</div>

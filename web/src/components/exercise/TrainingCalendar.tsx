@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { km, type Activity } from '../../lib/exercise'
+import { alpha } from '../../lib/color'
 import { SESSION_COLOR, SESSION_LABEL, sessionKind, type SessionKind } from '../../lib/session'
 
 // 월간 훈련 캘린더 — 한 셀에 그날 훈련(거리 + 세션 종류)을 보여주고, 누르면 상세로 간다.
@@ -135,7 +136,7 @@ export function TrainingCalendar({ activities }: { activities: Activity[] }) {
             <div
               key={key}
               className={`tcal-cell ${outside ? 'outside' : ''} ${today ? 'today' : ''} ${list.length ? 'has' : ''}`}
-              style={list.length ? { borderColor: SESSION_COLOR[list[0].kind] + '66' } : undefined}
+              style={list.length ? { borderColor: alpha(SESSION_COLOR[list[0].kind], 40) } : undefined}
             >
               <span className="tcal-day">{d.date()}</span>
               {list.length === 0 ? (

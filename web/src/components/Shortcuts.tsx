@@ -14,7 +14,7 @@ const EMOJIS = [
   '🐙', '🐳', '🐍', '☁️', '🗄️', '💾', '📚', '📖',
   '🏦', '💰', '💳', '📞', '🏃', '⚽', '🏆', '🎯',
 ]
-const COLORS = ['#ff6b35', '#3fb0ff', '#3fb950', '#a78bfa', '#facc15', '#ff6b9d', '#22d3ee', '#fb923c', '#f472b6', '#34d399']
+const COLORS = ['var(--accent)', 'var(--h-blue)', 'var(--h-green)', 'var(--h-purple)', 'var(--h-yellow)', 'var(--h-pink)', 'var(--h-cyan)', 'var(--h-orange)', 'var(--h-red)']
 
 export function Shortcuts() {
   const [list, setList] = useState<Shortcut[]>(loadShortcuts)
@@ -80,7 +80,7 @@ export function Shortcuts() {
           >
             <button
               className="dock-btn"
-              style={s.emoji ? undefined : { background: s.color ?? '#666' }}
+              style={s.emoji ? undefined : { background: s.color ?? 'var(--muted)' }}
               onClick={() => void open(s)}
               onContextMenu={(e) => {
                 e.preventDefault()

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { indexAtTime } from '../../lib/playback'
+import { isLightTheme } from '../../lib/theme'
 import type { Route } from '../../lib/activityDetail'
 
 // 활동 경로 지도 — intervals.icu 의 latlng 스트림을 그대로 선으로 그린다.
@@ -15,18 +16,18 @@ import type { Route } from '../../lib/activityDetail'
 // `cursor`(경과 시간, 초)가 들어오면 재생 모드가 된다: 지나온 구간만 색이 살고
 // 현재 위치에 점이 붙는다. null 이면 평소처럼 전체 경로.
 
-const DARK = {
-  url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+const CARTO = (variant: 'dark_all' | 'light_all') => ({
+  url: `https://{s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`,
   options: { subdomains: 'abcd', maxZoom: 20, attribution: '© OpenStreetMap · © CARTO' },
-}
+})
 const PLAIN = {
   url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   options: { maxZoom: 19, attribution: '© OpenStreetMap' },
 }
 
-const TRACK = '#ff6b35'
+const TRACK = 'var(--accent)'
 /** 재생 중 아직 안 지난 구간 — 있는 건 보이되 눈에 덜 띄게 */
-const AHEAD = '#4d5566'
+const AHEAD = 'var(--muted)'
 
 export function RouteMap({
   route,
@@ -56,9 +57,12 @@ export function RouteMap({
     const map = L.map(box, { zoomControl: true, scrollWheelZoom: false, attributionControl: true })
     mapRef.current = map
 
+    // 밝은 테마에서 지도만 캄캄하면 거기만 구멍처럼 보인다 — 타일도 테마를 따라간다
+    const light = isLightTheme()
+    const base = CARTO(light ? 'light_all' : 'dark_all')
     let tileOk = false
     let tileFails = 0
-    const tiles = L.tileLayer(DARK.url, DARK.options).addTo(map)
+    const tiles = L.tileLayer(base.url, base.options).addTo(map)
     tiles.on('tileload', () => {
       tileOk = true
     })
@@ -67,24 +71,26 @@ export function RouteMap({
       if (tileOk || ++tileFails < 4) return
       tileFails = -999
       map.removeLayer(tiles)
-      L.tileLayer(PLAIN.url, PLAIN.options).addTo(map).getContainer()?.classList.add('rm-dim')
+      const fallback = L.tileLayer(PLAIN.url, PLAIN.options).addTo(map)
+      // 기본 OSM 은 밝은 타일이라 어두운 테마에서만 눌러 준다
+      if (!light) fallback.getContainer()?.classList.add('rm-dim')
     })
 
     // 밑에 어두운 선을 깔아 밝은 길 위에서도 경로가 보이게 한다
-    L.polyline(route, { color: '#0b0d12', weight: 7, opacity: 0.5, lineJoin: 'round' }).addTo(map)
+    L.polyline(route, { color: 'var(--bg)', weight: 7, opacity: 0.5, lineJoin: 'round' }).addTo(map)
     const line = L.polyline(route, { color: TRACK, weight: 4, opacity: 0.95, lineJoin: 'round' }).addTo(map)
     lineRef.current = line
     // 지나온 구간 — 재생 중에만 좌표가 채워진다
     doneRef.current = L.polyline([], { color: TRACK, weight: 5, opacity: 1, lineJoin: 'round' }).addTo(map)
 
-    L.circleMarker(route[0], { radius: 6, color: '#0b0d12', weight: 2, fillColor: '#3fb950', fillOpacity: 1 })
+    L.circleMarker(route[0], { radius: 6, color: 'var(--bg)', weight: 2, fillColor: 'var(--ok)', fillOpacity: 1 })
       .addTo(map)
       .bindTooltip('출발')
     L.circleMarker(route[route.length - 1], {
       radius: 6,
-      color: '#0b0d12',
+      color: 'var(--bg)',
       weight: 2,
-      fillColor: '#f85149',
+      fillColor: 'var(--danger)',
       fillOpacity: 1,
     })
       .addTo(map)
@@ -93,7 +99,7 @@ export function RouteMap({
     // 현재 위치 — 재생 중에만 보인다
     headRef.current = L.circleMarker(route[0], {
       radius: 7,
-      color: '#fff',
+      color: 'var(--bg-card)',
       weight: 2.5,
       fillColor: TRACK,
       fillOpacity: 1,

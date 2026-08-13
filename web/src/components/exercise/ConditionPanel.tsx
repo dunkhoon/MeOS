@@ -6,12 +6,12 @@ import { CollapsibleCard } from '../CollapsibleCard'
 type MetricKey = 'restingHr' | 'hrv' | 'sleep' | 'sleepScore' | 'weight'
 
 const METRICS: Record<MetricKey, { label: string; unit: string; color: string; domain?: [number, number] }> = {
-  restingHr: { label: '안정시심박', unit: 'bpm', color: '#ff6b35' },
-  hrv: { label: 'HRV', unit: 'ms', color: '#3fb0ff' },
-  sleep: { label: '수면', unit: '시간', color: '#a78bfa' },
+  restingHr: { label: '안정시심박', unit: 'bpm', color: 'var(--accent)' },
+  hrv: { label: 'HRV', unit: 'ms', color: 'var(--info)' },
+  sleep: { label: '수면', unit: '시간', color: 'var(--h-purple)' },
   // 점수는 0~100 고정 축이라야 "80점이 높은 편"인지 한눈에 보인다 (auto 면 매번 축이 달라진다)
-  sleepScore: { label: '수면 점수', unit: '점', color: '#f0b429', domain: [0, 100] },
-  weight: { label: '체중', unit: 'kg', color: '#3fb950' },
+  sleepScore: { label: '수면 점수', unit: '점', color: 'var(--warn)', domain: [0, 100] },
+  weight: { label: '체중', unit: 'kg', color: 'var(--ok)' },
 }
 
 export function ConditionPanel({ wellness }: { wellness: Wellness[] }) {
@@ -50,11 +50,11 @@ export function ConditionPanel({ wellness }: { wellness: Wellness[] }) {
       {hasData ? (
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={series} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-            <CartesianGrid stroke="#262a35" vertical={false} />
-            <XAxis dataKey="day" tick={{ fill: '#8b90a0', fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
-            <YAxis tick={{ fill: '#8b90a0', fontSize: 11 }} domain={active.domain ?? ['auto', 'auto']} />
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="day" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
+            <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} domain={active.domain ?? ['auto', 'auto']} />
             <Tooltip
-              contentStyle={{ background: '#1b1e27', border: '1px solid #262a35', borderRadius: 8, color: '#e6e8ee' }}
+              contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
               formatter={(v: number) => [`${v} ${active.unit}`, active.label]}
             />
             <Line type="monotone" dataKey={metric} name={active.label} stroke={active.color} dot={false} strokeWidth={2} connectNulls />

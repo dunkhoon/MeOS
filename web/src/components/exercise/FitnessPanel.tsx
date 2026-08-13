@@ -18,19 +18,20 @@ const METRICS: Metric[] = [
   {
     key: 'fitness',
     label: 'Fitness(CTL)',
-    color: '#3fb0ff',
+    color: 'var(--info)',
     help: '최근 42일간 훈련량의 지수가중 평균 — 쌓아 올린 “체력”. 천천히 오르고 천천히 떨어져서, 꾸준히 훈련할수록 높아집니다.',
   },
   {
     key: 'fatigue',
     label: 'Fatigue(ATL)',
-    color: '#ff6b35',
+    // 액센트는 테마마다 파랑일 수 있어 CTL 과 겹친다 — 색상환에서 직접 고른다
+    color: 'var(--h-orange)',
     help: '최근 7일간 훈련량의 지수가중 평균 — 지금 쌓인 “피로”. 며칠만 몰아서 타도 금방 치솟고, 쉬면 빠르게 떨어집니다.',
   },
   {
     key: 'form',
     label: 'Form(TSB)',
-    color: '#3fb950',
+    color: 'var(--ok)',
     help: 'Fitness − Fatigue. 지금 몸이 얼마나 가벼운지를 나타냅니다. 대략 +5 이상이면 회복돼 레이스에 좋은 상태, −10~+5는 평소 훈련 구간, −30 아래에 오래 머무르면 과훈련을 의심해 보세요.',
   },
 ]
@@ -47,10 +48,10 @@ export function FitnessPanel({ wellness }: { wellness: Wellness[] }) {
         <>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid stroke="#262a35" vertical={false} />
-              <XAxis dataKey="day" tick={{ fill: '#8b90a0', fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
-              <YAxis tick={{ fill: '#8b90a0', fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: '#1b1e27', border: '1px solid #262a35', borderRadius: 8, color: '#e6e8ee' }} />
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="day" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
+              <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }} />
               {METRICS.map((m) => (
                 <Line
                   key={m.key}

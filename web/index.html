@@ -9,6 +9,23 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>MeOS</title>
+    <!--
+      저장해 둔 테마를 화면이 그려지기 전에 입힌다. React 가 돌 때까지 기다리면
+      기본 테마가 한 번 번쩍이고 바뀐다. 목록은 lib/theme.ts 와 index.css 에 있고,
+      여기서는 값이 멀쩡한지만 확인한다.
+    -->
+    <script>
+      ;(function () {
+        try {
+          var t = localStorage.getItem('pp:theme')
+          if (!t || !/^[a-z-]{3,24}$/.test(t)) return
+          document.documentElement.dataset.theme = t
+          document.documentElement.style.colorScheme = /light|latte/.test(t) ? 'light' : 'dark'
+        } catch (e) {
+          /* localStorage 를 못 쓰면 기본 테마로 */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

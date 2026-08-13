@@ -39,6 +39,7 @@ const PLAY_SECONDS = 30
 const TICK_MS = 60
 import { SESSION_COLOR, SESSION_KINDS, SESSION_LABEL, isManualKind, sessionKind, type SessionKind } from '../lib/session'
 import { analyzeSession, type Finding } from '../lib/nsm'
+import { alpha } from '../lib/color'
 
 // 훈련 상세 — 캘린더/최근활동에서 넘어온다. 요약 + 랩 분석 + 데이터 추이.
 
@@ -58,11 +59,11 @@ interface Metric {
   pace?: boolean
 }
 const METRICS: Metric[] = [
-  { key: 'heartrate', label: '심박수', unit: 'bpm', color: '#3b82f6', digits: 0 },
-  { key: 'velocity_smooth', label: '페이스', unit: '/km', color: '#3fb950', digits: 0, pace: true },
-  { key: 'cadence', label: '케이던스', unit: 'spm', color: '#a371f7', digits: 0 },
-  { key: 'watts', label: '파워', unit: 'W', color: '#d29922', digits: 0 },
-  { key: 'vertical_ratio', label: '수직비율', unit: '%', color: '#22d3ee', digits: 1 },
+  { key: 'heartrate', label: '심박수', unit: 'bpm', color: 'var(--info)', digits: 0 },
+  { key: 'velocity_smooth', label: '페이스', unit: '/km', color: 'var(--ok)', digits: 0, pace: true },
+  { key: 'cadence', label: '케이던스', unit: 'spm', color: 'var(--h-purple)', digits: 0 },
+  { key: 'watts', label: '파워', unit: 'W', color: 'var(--warn)', digits: 0 },
+  { key: 'vertical_ratio', label: '수직비율', unit: '%', color: 'var(--h-cyan)', digits: 1 },
 ]
 
 export default function ActivityDetail() {
@@ -332,7 +333,7 @@ export default function ActivityDetail() {
       {act && (
         <>
           <div className="ad-top">
-            <div className="card ad-kind" style={{ borderColor: SESSION_COLOR[kind] + '80' }}>
+            <div className="card ad-kind" style={{ borderColor: alpha(SESSION_COLOR[kind], 50) }}>
               <div className="ad-kind-name" style={{ color: SESSION_COLOR[kind] }}>
                 {SESSION_LABEL[kind] || act.type || '활동'}
               </div>
@@ -343,11 +344,11 @@ export default function ActivityDetail() {
               <Kpi label="총 시간" value={clock(act.moving_time_s)} />
               <Kpi label="거리" value={`${km(act.distance_m).toFixed(1)} km`} />
               <Kpi label="평균 페이스" value={paceStr(act.distance_m, act.moving_time_s)} />
-              <Kpi label="평균 HR" value={act.average_hr ? `${act.average_hr} bpm` : '-'} tone="#3fb950" />
-              <Kpi label="최고 HR" value={act.max_hr ? `${act.max_hr} bpm` : '-'} tone="#f85149" />
-              <Kpi label="훈련부하" value={act.training_load != null ? String(act.training_load) : '-'} tone="#d29922" />
+              <Kpi label="평균 HR" value={act.average_hr ? `${act.average_hr} bpm` : '-'} tone="var(--ok)" />
+              <Kpi label="최고 HR" value={act.max_hr ? `${act.max_hr} bpm` : '-'} tone="var(--danger)" />
+              <Kpi label="훈련부하" value={act.training_load != null ? String(act.training_load) : '-'} tone="var(--warn)" />
               <Kpi label="칼로리" value={act.calories ? `${act.calories} kcal` : '-'} />
-              {detail?.lthr && <Kpi label="LTHR" value={`${detail.lthr} bpm`} tone="#f85149" />}
+              {detail?.lthr && <Kpi label="LTHR" value={`${detail.lthr} bpm`} tone="var(--danger)" />}
             </div>
           </div>
 
@@ -479,7 +480,7 @@ export default function ActivityDetail() {
                       <stop offset="100%" stopColor={meta.color} stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="#232733" vertical={false} />
+                  <CartesianGrid stroke="var(--grid)" vertical={false} />
                   {/* 숫자 축이라야 재생 커서(ReferenceLine/Dot)를 임의 위치에 놓을 수 있다.
                       category 축이면 x 가 데이터 값과 정확히 일치해야만 그려진다. */}
                   <XAxis
@@ -487,12 +488,12 @@ export default function ActivityDetail() {
                     type="number"
                     domain={[0, Math.max(1, total)]}
                     tickFormatter={(t: number) => clock(t)}
-                    stroke="#6f7688"
+                    stroke="var(--muted)"
                     fontSize={11}
                     minTickGap={40}
                   />
                   <YAxis
-                    stroke="#6f7688"
+                    stroke="var(--muted)"
                     fontSize={11}
                     width={52}
                     domain={domain}
@@ -502,14 +503,14 @@ export default function ActivityDetail() {
                   {metric === 'heartrate' && detail?.lthr && (
                     <ReferenceLine
                       y={detail.lthr}
-                      stroke="#f85149"
+                      stroke="var(--danger)"
                       strokeDasharray="4 4"
                       // position:'right' 은 차트 밖으로 나가 잘린다 — 안쪽에 붙인다
-                      label={{ value: `LTHR ${detail.lthr}`, position: 'insideTopRight', fill: '#f85149', fontSize: 11 }}
+                      label={{ value: `LTHR ${detail.lthr}`, position: 'insideTopRight', fill: 'var(--danger)', fontSize: 11 }}
                     />
                   )}
                   <Tooltip
-                    contentStyle={{ background: '#14161d', border: '1px solid #232733', borderRadius: 8, fontSize: 12 }}
+                    contentStyle={{ background: 'var(--tooltip-bg)', border: '1px solid var(--grid)', borderRadius: 8, fontSize: 12 }}
                     labelFormatter={(t) => `경과 ${clock(Number(t))}`}
                     formatter={(v: number) => [
                       meta.pace ? `${paceFromSpeed(v)} /km` : `${v.toFixed(meta.digits)} ${meta.unit}`,
@@ -520,7 +521,7 @@ export default function ActivityDetail() {
                     type="monotone"
                     dataKey="v"
                     // 재생 중에는 전체 선을 죽이고, 지나온 부분만 아래 겹선으로 살린다
-                    stroke={cursor == null ? meta.color : '#39404f'}
+                    stroke={cursor == null ? meta.color : 'var(--border)'}
                     strokeWidth={1.6}
                     fill={cursor == null ? 'url(#adFill)' : 'none'}
                     dot={false}
@@ -540,9 +541,9 @@ export default function ActivityDetail() {
                       isAnimationActive={false}
                     />
                   )}
-                  {cursor != null && <ReferenceLine x={cursor} stroke="#e6e8ee" strokeOpacity={0.55} />}
+                  {cursor != null && <ReferenceLine x={cursor} stroke="var(--text)" strokeOpacity={0.55} />}
                   {cursor != null && cursorValue != null && (
-                    <ReferenceDot x={cursor} y={cursorValue} r={4.5} fill={meta.color} stroke="#0b0d12" strokeWidth={2} />
+                    <ReferenceDot x={cursor} y={cursorValue} r={4.5} fill={meta.color} stroke="var(--bg)" strokeWidth={2} />
                   )}
                 </AreaChart>
               </ResponsiveContainer>

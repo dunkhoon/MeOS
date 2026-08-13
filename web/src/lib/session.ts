@@ -23,15 +23,19 @@ export const SESSION_LABEL: Record<SessionKind, string> = {
   other: '',
 }
 
-/** 캘린더 셀 색. 강도가 높을수록 따뜻한 색. */
+/**
+ * 캘린더 셀 색. 강도가 높을수록 따뜻한 색.
+ * 액센트를 쓰지 않는 이유는 exercise.ts 의 TYPE_COLORS 와 같다 —
+ * 테마에 따라 액센트가 팔레트의 색 하나와 겹쳐 두 항목이 한 색이 되어 버린다.
+ */
 export const SESSION_COLOR: Record<SessionKind, string> = {
-  race: '#f85149',
-  interval: '#ff6b35',
-  tempo: '#d29922',
-  long: '#a371f7',
-  recovery: '#3fb950',
-  easy: '#4a7cff',
-  other: '#8b92a4',
+  race: 'var(--h-red)',
+  interval: 'var(--h-orange)',
+  tempo: 'var(--h-yellow)',
+  long: 'var(--h-purple)',
+  recovery: 'var(--h-green)',
+  easy: 'var(--h-blue)',
+  other: 'var(--muted)',
 }
 
 /**

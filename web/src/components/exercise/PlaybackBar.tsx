@@ -92,7 +92,7 @@ export function PlaybackBar({
           {readout.hr != null && (
             <>
               <Sep />
-              <span style={{ color: '#3b82f6' }}>{Math.round(readout.hr)}</span> <span className="muted">bpm</span>
+              <span style={{ color: 'var(--info)' }}>{Math.round(readout.hr)}</span> <span className="muted">bpm</span>
             </>
           )}
           {readout.cadence != null && (

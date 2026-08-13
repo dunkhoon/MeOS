@@ -100,21 +100,35 @@ export function hms(sec: number | null | undefined): string {
 }
 
 // 활동 종류별 고정 색상 (없으면 fallback 팔레트에서 이름 해시로 배정)
+//
+// ⚠️ 여기서는 `--accent` 를 쓰지 않는다. 테마 대부분이 액센트로 팔레트의 색 하나를
+// 그대로 쓰기 때문에(예: GitHub Light 는 액센트도 파랑, --h-blue 도 같은 파랑)
+// Run 을 액센트로 두면 Ride 와 같은 색이 되어 차트에서 구분이 사라진다.
+// 색상환 토큰만 골라 쓰면 어느 테마에서도 서로 다른 색이 보장된다.
 const TYPE_COLORS: Record<string, string> = {
-  Run: '#ff6b35',
-  VirtualRun: '#ffa94d',
-  Ride: '#3fb0ff',
-  VirtualRide: '#4dc4ff',
-  WeightTraining: '#a78bfa',
-  Walk: '#3fb950',
-  Hike: '#f4a261',
-  Swim: '#22d3ee',
-  Soccer: '#ff6b9d',
-  Workout: '#e879f9',
-  Yoga: '#facc15',
-  Rowing: '#38bdf8',
+  Run: 'var(--h-orange)',
+  VirtualRun: 'var(--h-yellow)',
+  Ride: 'var(--h-blue)',
+  VirtualRide: 'var(--h-cyan)',
+  WeightTraining: 'var(--h-purple)',
+  Walk: 'var(--h-green)',
+  Hike: 'var(--h-green)',
+  Swim: 'var(--h-cyan)',
+  Soccer: 'var(--h-pink)',
+  Workout: 'var(--h-pink)',
+  Yoga: 'var(--h-yellow)',
+  Rowing: 'var(--h-blue)',
 }
-const FALLBACK_PALETTE = ['#f472b6', '#facc15', '#22d3ee', '#a3e635', '#fb923c', '#c084fc', '#38bdf8', '#f87171', '#34d399', '#818cf8']
+const FALLBACK_PALETTE = [
+  'var(--h-pink)',
+  'var(--h-yellow)',
+  'var(--h-cyan)',
+  'var(--h-green)',
+  'var(--h-orange)',
+  'var(--h-purple)',
+  'var(--h-blue)',
+  'var(--h-red)',
+]
 
 export function typeColor(type: string | null | undefined): string {
   const t = type || 'Other'
@@ -200,11 +214,11 @@ export const HR_ZONES = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'] as const
 export type HrZone = (typeof HR_ZONES)[number]
 
 export const ZONE_COLORS: Record<HrZone, string> = {
-  Z1: '#4a9eff',
-  Z2: '#3fb950',
-  Z3: '#facc15',
-  Z4: '#ff9f43',
-  Z5: '#ff4d4f',
+  Z1: 'var(--info)',
+  Z2: 'var(--ok)',
+  Z3: 'var(--warn)',
+  Z4: 'var(--h-orange)',
+  Z5: 'var(--danger)',
 }
 
 export interface ZonePoint {

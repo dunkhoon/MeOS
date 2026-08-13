@@ -143,6 +143,25 @@ Vault 에 값이 없으면 cron 은 조용히 넘어가므로, 마이그레이�
 npx deno@2 check supabase/functions/sync/index.ts
 ```
 
+## 테마 (10종)
+
+**설정 → 테마**에서 고른다. 에디터에서 널리 쓰이는 테마의 **공식 팔레트**를 그대로 옮겼다 —
+어두움: MeOS 기본 · Catppuccin Mocha · Dracula · Tokyo Night · Nord · Gruvbox Dark · One Dark /
+밝음: Catppuccin Latte · GitHub Light · Solarized Light.
+
+- 색은 전부 `web/src/index.css` 의 `:root[data-theme=…]` 블록에 있다. `lib/theme.ts` 는 목록과 적용 함수만 갖는다.
+- 각 블록이 `[data-swatch=…]` 에도 걸려 있어 **설정 화면 미리보기가 같은 팔레트를 재사용**한다. 색을 두 벌 적을 필요가 없다.
+- 선택은 `localStorage`(`pp:theme`). `index.html` 의 인라인 스크립트가 **첫 페인트 전에** 입혀 번쩍임이 없다.
+- 토큰은 표면(`--bg` / `--bg-elev` / `--bg-card` / `--border` / `--text` / `--muted`), 브랜드(`--accent` / `--on-accent`),
+  색상환 8개(`--h-red` … `--h-pink`). 의미(`--ok` `--warn` `--danger` `--info`)는 색상환에 엮은 별칭이다.
+
+⚠️ **활동 종류·세션 종류 색에는 `--accent` 를 쓰지 않는다.** 테마 10개 중 8개가 액센트로
+팔레트의 색 하나를 그대로 쓴다(GitHub Light 는 액센트도 `--h-blue` 도 같은 파랑). 예전처럼 Run 을
+액센트로 두면 **Ride 와 같은 색**이 되어 차트에서 구분이 사라진다. 색상환 토큰만 골라 쓰면 안전하다.
+
+⚠️ 색이 토큰이 되면서 `색 + '33'` 으로 투명도를 붙이던 코드는 전부 깨진다(`var(--x)33`).
+`lib/color.ts` 의 `alpha(color, pct)`(= `color-mix`)를 쓴다.
+
 ## 서체 — Pretendard (앱에 포함)
 
 예전엔 서체를 지정하지 않아 OS 가 골랐다. 윈도우에서는 라틴이 Segoe UI, 한글이 **맑은 고딕**으로 갈라져

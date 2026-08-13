@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
+import { THEMES, getTheme, setTheme, type ThemeId } from '../lib/theme'
 
 export default function Settings() {
   const isDesktop = !!window.desktop?.isDesktop
@@ -8,8 +9,10 @@ export default function Settings() {
     <div className="page">
       <header className="page-head">
         <h2>설정</h2>
-        <p className="muted">계정 · Quick Search · 스니펫 · BTS 연결</p>
+        <p className="muted">테마 · 계정 · Quick Search · 스니펫 · BTS 연결</p>
       </header>
+
+      <ThemeSetting />
 
       {/* 계정은 모바일에서도 보여야 한다 — 비밀번호를 여기서 정한다 */}
       <AccountSetting />
@@ -25,6 +28,77 @@ export default function Settings() {
       ) : (
         <div className="card muted">Quick Search · 스니펫 · BTS · Perforce 설정은 데스크톱 앱에서만 사용할 수 있어요.</div>
       )}
+    </div>
+  )
+}
+
+// ── 테마 ────────────────────────────────────────────────────
+// 미리보기 조각은 `[data-swatch]` 로 그 테마의 팔레트를 그대로 뒤집어쓴다.
+// 색을 여기에 다시 적지 않으므로 index.css 만 고치면 미리보기까지 따라온다.
+
+function ThemeSetting() {
+  const [cur, setCur] = useState<ThemeId>(() => getTheme())
+
+  const pick = (id: ThemeId) => {
+    setTheme(id)
+    setCur(id)
+  }
+
+  const groups = [
+    { mode: 'dark' as const, label: '어두운 테마' },
+    { mode: 'light' as const, label: '밝은 테마' },
+  ]
+
+  return (
+    <div className="card setting-card">
+      <h3 className="card-title">테마</h3>
+      <p className="muted small">
+        이 기기에만 적용됩니다. 에디터에서 널리 쓰이는 테마의 공식 팔레트를 그대로 옮겼습니다.
+      </p>
+
+      {groups.map((g) => (
+        <div key={g.mode}>
+          <div className="theme-group">{g.label}</div>
+          <div className="theme-grid">
+            {THEMES.filter((t) => t.mode === g.mode).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`theme-card ${cur === t.id ? 'active' : ''}`}
+                onClick={() => pick(t.id)}
+                aria-pressed={cur === t.id}
+              >
+                {/* 이 조각 안에서는 --bg 등이 해당 테마 값으로 바뀐다 */}
+                <span className="theme-prev" data-swatch={t.id}>
+                  <span className="tp-bar">
+                    <i className="tp-dot" />
+                    <i className="tp-line" />
+                  </span>
+                  <span className="tp-body">
+                    <i className="tp-card">
+                      <b>12.4</b>
+                      <s />
+                    </i>
+                    <i className="tp-hues">
+                      <em style={{ background: 'var(--h-red)' }} />
+                      <em style={{ background: 'var(--h-orange)' }} />
+                      <em style={{ background: 'var(--h-yellow)' }} />
+                      <em style={{ background: 'var(--h-green)' }} />
+                      <em style={{ background: 'var(--h-blue)' }} />
+                      <em style={{ background: 'var(--h-purple)' }} />
+                    </i>
+                  </span>
+                </span>
+                <span className="theme-name">
+                  {t.name}
+                  {cur === t.id && <span className="theme-check">사용 중</span>}
+                </span>
+                <span className="muted small">{t.note}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
