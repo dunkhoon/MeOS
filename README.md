@@ -53,10 +53,11 @@ intervals.icu(활동·웰니스·대회)와 구글 캘린더를 Supabase DB 로 
 | 함수 | 하는 일 |
 |---|---|
 | `sync` | intervals.icu + 구글 캘린더 → Supabase (앱 버튼 · CLI · cron) |
-| `activity` | 활동 하나의 **랩·데이터 추이**를 intervals.icu 에서 그때그때 가져온다 (훈련 상세 화면) |
+| `activity` | 활동 하나의 **랩·데이터 추이·GPS 경로**를 intervals.icu 에서 그때그때 가져온다 (훈련 상세 화면) |
 
 > `activity` 는 DB 에 넣지 않고 볼 때만 부른다 — 스트림 원본이 활동 하나에 300KB 를 넘어 쌓기엔 과하고,
-> intervals.icu 키는 서버 전용이라 브라우저에서 직접 부를 수도 없다. 응답은 700포인트로 줄여 약 50KB.
+> intervals.icu 키는 서버 전용이라 브라우저에서 직접 부를 수도 없다.
+> 응답은 추이 700포인트(≈50KB) + 경로 2000포인트(≈40KB)로 줄인다.
 
 ### 배포 (최초 1회 + 함수를 고칠 때마다)
 
@@ -141,6 +142,17 @@ Vault 에 값이 없으면 cron 은 조용히 넘어가므로, 마이그레이�
 ```bash
 npx deno@2 check supabase/functions/sync/index.ts
 ```
+
+## 경로 지도
+
+훈련 상세에 **GPS 경로**를 그린다 (`web/src/components/exercise/RouteMap.tsx`).
+
+- 좌표는 intervals.icu 의 `latlng` 스트림 — 위도는 `data`, 경도는 `data2` 로 **따로** 온다.
+- 솎아낼 때 평균이 아니라 **건너뛰기**로 줄인다. 좌표를 평균 내면 코너가 잘려 실제로 지나지 않은 곳을 가로지른다.
+- 타일은 **CARTO 다크**(OpenStreetMap 데이터). 앱이 어두워서 기본 OSM 타일은 혼자 하얗게 뜬다.
+  CARTO 가 막히면 기본 OSM 으로 되돌리고 CSS 로 어둡게 눌러 준다. **키·계정 불필요.**
+- 실내 러닝·수동 입력처럼 GPS 가 없는 활동은 카드째 뜨지 않고, leaflet 청크(≈150KB)도 받지 않는다.
+- 휠 확대는 기본 **끔** — 페이지를 스크롤하다 지도 위를 지날 때 화면이 멋대로 확대되지 않게. 버튼으로 켠다.
 
 ## 훈련 분석 — 규칙 기반 + 외부 AI
 

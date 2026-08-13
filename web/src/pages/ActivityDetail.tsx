@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import {
@@ -25,6 +25,9 @@ import {
   type Lap,
 } from '../lib/activityDetail'
 import { fetchActivities, km, paceStr, type Activity } from '../lib/exercise'
+
+// 지도(leaflet)는 150KB 가 넘는데 GPS 있는 활동에서만 쓴다 — 필요할 때만 받아 온다
+const RouteMap = lazy(() => import('../components/exercise/RouteMap').then((m) => ({ default: m.RouteMap })))
 import { SESSION_COLOR, SESSION_KINDS, SESSION_LABEL, isManualKind, sessionKind, type SessionKind } from '../lib/session'
 import { analyzeSession, type Finding } from '../lib/nsm'
 
@@ -305,6 +308,13 @@ export default function ActivityDetail() {
                 다시 시도
               </button>
             </div>
+          )}
+
+          {/* ── 경로 지도 — GPS 가 있는 활동만 (실내·수동 입력은 빈 배열) ── */}
+          {(detail?.route?.length ?? 0) >= 2 && (
+            <Suspense fallback={<div className="card ad-map muted small">지도 불러오는 중…</div>}>
+              <RouteMap route={detail!.route} />
+            </Suspense>
           )}
 
           {/* ── 데이터 추이 (6.png) ── */}

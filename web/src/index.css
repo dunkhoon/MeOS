@@ -2688,8 +2688,72 @@ code {
   font-variant-numeric: tabular-nums;
 }
 .ad-chart,
-.ad-laps {
+.ad-laps,
+.ad-map {
   margin-bottom: 16px;
+}
+
+/* ── 경로 지도 (Leaflet) ─────────────────── */
+.ad-map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.ad-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ad-map-box {
+  height: 380px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  /* 타일이 뜨기 전 흰 판이 번쩍이지 않게 */
+  background: var(--bg-elev);
+}
+@media (max-width: 768px) {
+  .ad-map-box {
+    height: 300px;
+  }
+}
+/* CARTO 가 막혀 기본 OSM 으로 되돌아갔을 때만 — 밝은 타일을 어둡게 눌러 준다 */
+.rm-dim {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+}
+/* Leaflet 기본 크롬이 흰색이라 어두운 화면에서 혼자 튄다 */
+.ad-map-box .leaflet-container {
+  background: var(--bg-elev);
+  font: inherit;
+  font-size: 12px;
+}
+.ad-map-box .leaflet-control-attribution {
+  background: rgba(11, 13, 18, 0.7);
+  color: var(--muted);
+  font-size: 10px;
+}
+.ad-map-box .leaflet-control-attribution a {
+  color: var(--muted);
+}
+.ad-map-box .leaflet-bar a {
+  background: var(--bg-card);
+  color: var(--text);
+  border-bottom-color: var(--border);
+}
+.ad-map-box .leaflet-bar a:hover {
+  background: var(--bg-elev);
+}
+.ad-map-box .leaflet-tooltip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+.ad-map-box .leaflet-tooltip::before {
+  border-top-color: var(--border);
 }
 .ad-chart-head {
   display: flex;

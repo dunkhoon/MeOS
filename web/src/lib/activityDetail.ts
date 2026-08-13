@@ -27,11 +27,15 @@ export interface Lap {
 /** 다운샘플된 시계열. 키는 intervals.icu 스트림 이름. */
 export type Streams = Partial<Record<'time' | 'heartrate' | 'velocity_smooth' | 'cadence' | 'watts' | 'vertical_ratio', (number | null)[]>>
 
+/** GPS 경로 — [위도, 경도] 쌍. 실내 운동이나 GPS 없는 활동은 빈 배열. */
+export type Route = [number, number][]
+
 export interface ActivityDetail {
   lthr: number | null
   maxHr: number | null
   laps: Lap[]
   streams: Streams
+  route: Route
 }
 
 const ACT_COLS =
@@ -60,7 +64,14 @@ export async function fetchActivityDetail(externalId: string): Promise<ActivityD
   })
   if (error) throw new Error(await readFunctionError(error))
   if (!data?.ok) throw new Error(data?.error || '상세 정보를 불러오지 못했습니다.')
-  return { lthr: data.lthr, maxHr: data.maxHr, laps: data.laps ?? [], streams: data.streams ?? {} }
+  return {
+    lthr: data.lthr,
+    maxHr: data.maxHr,
+    laps: data.laps ?? [],
+    streams: data.streams ?? {},
+    // 함수를 아직 새로 배포하지 않았으면 route 가 없다 — 지도만 빠지고 나머지는 그대로 뜬다
+    route: data.route ?? [],
+  }
 }
 
 async function readFunctionError(error: unknown): Promise<string> {

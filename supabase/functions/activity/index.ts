@@ -16,8 +16,14 @@ const CORS = {
 /** 차트에 그릴 점 개수. 3958 포인트를 그대로 보내면 payload 만 커지고 화면은 그대로다. */
 const MAX_POINTS = 700
 
-/** 6.png 의 토글과 같은 항목들 */
-const STREAM_TYPES = ['time', 'heartrate', 'velocity_smooth', 'cadence', 'watts', 'vertical_ratio'] as const
+/** 6.png 의 토글과 같은 항목들 + 지도용 좌표 */
+const STREAM_TYPES = ['time', 'heartrate', 'velocity_smooth', 'cadence', 'watts', 'vertical_ratio', 'latlng'] as const
+
+/**
+ * 지도 선을 그릴 좌표 개수. 초당 1점이라 1시간이면 3600점인데 그걸 다 보낼 필요는 없다.
+ * 다만 너무 줄이면 확대했을 때 코너가 잘려 보인다 — 2000점이면 대략 10m 간격이라 괜찮다.
+ */
+const MAX_ROUTE_POINTS = 2000
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
@@ -60,6 +66,7 @@ Deno.serve(async (req) => {
       maxHr: detail?.max_hr ?? detail?.icu_max_hr ?? null,
       laps: (ivRes?.icu_intervals ?? []).map(toLap),
       streams: toStreams(stRes),
+      route: toRoute(stRes),
     })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -113,7 +120,8 @@ function toStreams(raw: unknown): Record<string, (number | null)[]> {
   for (const s of raw) {
     const t = (s as { type?: string })?.type
     const d = (s as { data?: unknown[] })?.data
-    if (t && Array.isArray(d)) byType.set(t, d)
+    // latlng 은 시계열이 아니라 좌표다 — toRoute 가 따로 처리한다
+    if (t && t !== 'latlng' && Array.isArray(d)) byType.set(t, d)
   }
   const len = Math.max(0, ...[...byType.values()].map((d) => d.length))
   if (!len) return {}
@@ -137,5 +145,37 @@ function toStreams(raw: unknown): Record<string, (number | null)[]> {
     }
     out[type] = col
   }
+  return out
+}
+
+/**
+ * GPS 경로. intervals.icu 의 latlng 스트림은 위도가 `data`, 경도가 `data2` 로 따로 온다.
+ *
+ * 점을 솎아낼 때 평균이 아니라 **건너뛰기**를 쓴다 — 좌표는 평균 내면 코너가 잘려
+ * 실제로 지나지 않은 곳을 가로지르는 선이 된다. 마지막 점은 항상 남겨 경로가 중간에 끊기지 않게 한다.
+ * 소수점 5자리 ≈ 1m — 화면에 그리기엔 충분하고 전송량은 절반이 된다.
+ */
+function toRoute(raw: unknown): [number, number][] {
+  if (!Array.isArray(raw)) return []
+  const s = raw.find((x) => (x as { type?: string })?.type === 'latlng') as
+    | { data?: unknown[]; data2?: unknown[] }
+    | undefined
+  const lat = s?.data
+  const lng = s?.data2
+  if (!Array.isArray(lat) || !Array.isArray(lng)) return []
+
+  const len = Math.min(lat.length, lng.length)
+  const step = Math.max(1, Math.ceil(len / MAX_ROUTE_POINTS))
+  const out: [number, number][] = []
+  const push = (i: number) => {
+    const a = lat[i]
+    const b = lng[i]
+    // GPS 가 끊긴 구간은 null 또는 정확히 0,0 (기니만 앞바다) 으로 온다
+    if (typeof a !== 'number' || typeof b !== 'number') return
+    if (!Number.isFinite(a) || !Number.isFinite(b) || (a === 0 && b === 0)) return
+    out.push([Math.round(a * 1e5) / 1e5, Math.round(b * 1e5) / 1e5])
+  }
+  for (let i = 0; i < len; i += step) push(i)
+  if ((len - 1) % step !== 0) push(len - 1)
   return out
 }
