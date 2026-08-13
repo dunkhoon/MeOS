@@ -1208,6 +1208,13 @@ code {
   margin-top: 6px;
 }
 
+/* 캘린더 · 차트 묶음 · 러닝화가 서로 붙어 보이지 않게. 카드끼리 간격(16px)보다 넉넉하게 준다. */
+.ex-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
 .ex-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1550,15 +1557,15 @@ code {
 /* 컨디션 / 웰니스 타일 */
 .cond-tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
   margin-bottom: 14px;
 }
 .cond-tile {
   background: var(--bg-elev);
   border: none;
   border-radius: 8px;
-  padding: 12px;
+  padding: 12px 6px;
   text-align: center;
   cursor: pointer;
   color: var(--text);
@@ -1582,7 +1589,8 @@ code {
 }
 @media (max-width: 768px) {
   .cond-tiles {
-    grid-template-columns: repeat(2, 1fr);
+    /* 5칸이라 2열이면 한 칸이 붕 뜬다 — 3+2 로 */
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 .gear-empty {

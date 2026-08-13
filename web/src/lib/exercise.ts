@@ -294,6 +294,8 @@ export interface ConditionSummary {
   restingHr: number | null
   hrv: number | null
   sleepHours: number | null
+  /** 수면 점수 0~100 (Garmin). 얼마나 잤는지와 별개로 얼마나 잘 잤는지 */
+  sleepScore: number | null
   weight: number | null
 }
 
@@ -303,6 +305,7 @@ export function conditionSummary(wellness: Wellness[]): ConditionSummary {
     restingHr: latestNonNull(wellness, (w) => w.resting_hr),
     hrv: latestNonNull(wellness, (w) => w.hrv),
     sleepHours: sleep != null ? Math.round((sleep / 3600) * 10) / 10 : null,
+    sleepScore: latestNonNull(wellness, (w) => w.sleep_score),
     weight: latestNonNull(wellness, (w) => w.weight),
   }
 }
@@ -312,6 +315,7 @@ export interface ConditionPoint {
   hrv: number | null
   restingHr: number | null
   sleep: number | null // 시간
+  sleepScore: number | null // 0~100
   weight: number | null
 }
 
@@ -321,6 +325,7 @@ export function conditionSeries(wellness: Wellness[]): ConditionPoint[] {
     hrv: w.hrv ?? null,
     restingHr: w.resting_hr ?? null,
     sleep: w.sleep_secs != null ? Math.round((w.sleep_secs / 3600) * 10) / 10 : null,
+    sleepScore: w.sleep_score ?? null,
     weight: w.weight ?? null,
   }))
 }

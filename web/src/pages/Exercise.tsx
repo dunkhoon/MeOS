@@ -263,20 +263,24 @@ export default function Exercise() {
         </div>
       </div>
 
-      <TrainingCalendar activities={filtered} />
+      {/* 세로로 쌓이는 블록들 — 카드 자체엔 바깥 여백이 없어서 여기서 한 번에 준다 */}
+      <div className="ex-stack">
+        <TrainingCalendar activities={filtered} />
 
-      <ShoesPanel />
+        <div className="ex-grid">
+          <DistanceChart activities={filtered} types={selectedTypes} />
+          <CollapsibleCard id="ex-type" title="종류별">
+            <TypeBreakdown activities={filtered} />
+          </CollapsibleCard>
+          <CollapsibleCard id="ex-recent" title="최근 활동">
+            <RecentActivities activities={filtered} />
+          </CollapsibleCard>
+          <FitnessPanel wellness={wellness} />
+          <ConditionPanel wellness={wellness} />
+        </div>
 
-      <div className="ex-grid">
-        <DistanceChart activities={filtered} types={selectedTypes} />
-        <CollapsibleCard id="ex-type" title="종류별">
-          <TypeBreakdown activities={filtered} />
-        </CollapsibleCard>
-        <CollapsibleCard id="ex-recent" title="최근 활동">
-          <RecentActivities activities={filtered} />
-        </CollapsibleCard>
-        <FitnessPanel wellness={wellness} />
-        <ConditionPanel wellness={wellness} />
+        {/* 자주 보는 정보는 아니라 맨 아래 */}
+        <ShoesPanel />
       </div>
     </div>
   )
