@@ -98,6 +98,8 @@ on conflict (user_id, provider) do update set tokens = excluded.tokens, expires_
 - ⚠️ **refresh token 은 갱신할 때마다 값이 바뀌고 유효기간이 30일**이다. 그래서 시크릿이 아니라 DB 에 두며
   (함수가 시크릿을 못 쓴다), 30일 넘게 동기화가 없으면 위 로그인을 다시 해야 한다.
 - 신발↔활동 매칭은 추정이 아니다 — **intervals.icu 활동의 `external_id` 가 곧 Garmin 활동 id** 라 정확히 붙는다.
+- Garmin 에서 **비활성(은퇴)** 처리한 신발은 목록에서 숨긴다. 카드 우측 **비활성 N 보기** 로 펼칠 수 있고
+  선택은 기억한다.
 - 사진은 안 가져온다. Garmin 이 `imageName*` 을 전부 null 로 주기 때문이다.
 
 ### 실행 방법

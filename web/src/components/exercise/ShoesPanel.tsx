@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
-import { fetchShoeActivities, fetchShoes, shoeLabel, type Shoe } from '../../lib/shoes'
+import { fetchShoeActivities, fetchShoes, isRetired, shoeLabel, type Shoe } from '../../lib/shoes'
 import { km, paceStr, typeColor, type Activity } from '../../lib/exercise'
 
 // 러닝화 — Garmin 장비 정보 (reference/shoes.png 참고).
@@ -21,11 +21,32 @@ const ShoeIcon = () => (
   </svg>
 )
 
+// 비활성(은퇴) 신발을 볼지. 대개는 안 보고 싶어 하므로 기본은 숨김이고, 선택은 기억한다.
+const SHOW_RETIRED_KEY = 'pp:shoes:retired'
+
 export function ShoesPanel() {
   const [shoes, setShoes] = useState<Shoe[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [open, setOpen] = useState<Shoe | null>(null)
+  const [showRetired, setShowRetired] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_RETIRED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleRetired = () =>
+    setShowRetired((v) => {
+      const next = !v
+      try {
+        localStorage.setItem(SHOW_RETIRED_KEY, next ? '1' : '0')
+      } catch {
+        /* 저장 실패는 무시 */
+      }
+      return next
+    })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -42,7 +63,10 @@ export function ShoesPanel() {
     void load()
   }, [load])
 
-  const max = Math.max(...shoes.map((s) => s.totalDistanceM), 1)
+  const retiredCount = shoes.filter(isRetired).length
+  const visible = showRetired ? shoes : shoes.filter((s) => !isRetired(s))
+  // 막대 기준은 보이는 것들 중 최대 — 숨긴 신발 때문에 막대가 짜부라지지 않게
+  const max = Math.max(...visible.map((s) => s.totalDistanceM), 1)
 
   return (
     <CollapsibleCard
@@ -52,7 +76,16 @@ export function ShoesPanel() {
           <span className="sec-dot" /> 러닝화
         </>
       }
-      actions={<span className="muted small">{shoes.length ? `${shoes.length}켤레` : ''}</span>}
+      actions={
+        <>
+          {retiredCount > 0 && (
+            <button className="link-btn small" onClick={toggleRetired}>
+              {showRetired ? '비활성 숨기기' : `비활성 ${retiredCount} 보기`}
+            </button>
+          )}
+          <span className="muted small">{visible.length ? `${visible.length}켤레` : ''}</span>
+        </>
+      }
     >
       {loading && <p className="muted small">불러오는 중…</p>}
       {err && <p className="error small">{err}</p>}
@@ -63,9 +96,12 @@ export function ShoesPanel() {
           Garmin Connect 에 장비를 등록한 뒤 <b>새로고침</b>을 누르세요.
         </div>
       )}
-      {shoes.length > 0 && (<><div className="shoe-list">
-        {shoes.map((s) => {
-          const retired = /retired/i.test(s.status ?? '')
+      {!loading && !err && shoes.length > 0 && visible.length === 0 && (
+        <p className="muted small">쓰는 러닝화가 없습니다 (전부 비활성).</p>
+      )}
+      {visible.length > 0 && (<><div className="shoe-list">
+        {visible.map((s) => {
+          const retired = isRetired(s)
           // 막대는 교체 목표가 있으면 그 대비, 없으면 가장 많이 뛴 신발 대비
           const denom = s.maxMeters ?? max
           const pct = Math.min(100, (s.totalDistanceM / denom) * 100)
@@ -99,7 +135,10 @@ export function ShoesPanel() {
           )
         })}
       </div>
-      <p className="muted small shoe-note">Garmin Connect 장비 정보 · 누적 거리는 Garmin 기준입니다</p></>)}
+      <p className="muted small shoe-note">
+        Garmin Connect 장비 정보 · 누적 거리는 Garmin 기준입니다
+        {!showRetired && retiredCount > 0 && ` · 비활성 ${retiredCount}켤레 숨김`}
+      </p></>)}
 
       {open && <ShoeModal shoe={open} onClose={() => setOpen(null)} />}
     </CollapsibleCard>

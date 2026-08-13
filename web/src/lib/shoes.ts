@@ -96,3 +96,8 @@ export async function fetchShoeActivities(shoeUuid: string): Promise<Activity[]>
 export function shoeLabel(s: Shoe): string {
   return s.name || s.model || '이름 없는 장비'
 }
+
+/** Garmin 에서 비활성(은퇴) 처리한 장비인지. */
+export function isRetired(s: Shoe): boolean {
+  return /retired/i.test(s.status ?? '')
+}
