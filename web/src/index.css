@@ -1,4 +1,23 @@
+/* Pretendard — 본문 서체. 앱에 같이 넣어 오프라인에서도 유지된다.
+ *
+ * 전체 가변 폰트는 2MB 라 KS X 1001 완성형 2350자 + 라틴·기호로 줄인 것을 쓴다(453KB).
+ * 굵기 축(45~930)은 그대로라 파일 하나로 9단계를 다 쓴다.
+ * 다시 만들려면: python scripts/make-font-subset.py
+ *
+ * 서브셋 밖 글자(드문 한글·한자 등)는 아래 시스템 스택으로 자연스럽게 떨어진다.
+ */
+@font-face {
+  font-family: 'Pretendard';
+  /* 'woff2-variations' 는 옛 표기라 안 먹는 브라우저가 있다. woff2 + 굵기 범위면 충분하다. */
+  src: url('./assets/fonts/pretendard-subset.woff2') format('woff2');
+  font-weight: 45 930;
+  font-style: normal;
+  /* 첫 방문에서 글자가 안 보이는 것보다 시스템 서체로 먼저 보이는 편이 낫다 */
+  font-display: swap;
+}
+
 :root {
+  --font-ui: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
   --bg: #0e0f13;
   --bg-elev: #16181f;
   --bg-card: #1b1e27;
@@ -24,8 +43,16 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
+}
+
+/* 폼 컨트롤은 서체를 물려받지 않는다 — 여기서 한 번에 맞춰 둔다 */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 .muted {

@@ -37,3 +37,6 @@ supabase/.temp/
 
 # Garmin 토큰 (러닝화 정보용, 갱신 토큰 포함 — 절대 커밋 금지)
 garmin-tokens.json
+
+# 서브셋 생성 중간 산물
+scripts/.font-chars.txt

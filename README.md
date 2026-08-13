@@ -143,6 +143,26 @@ Vault 에 값이 없으면 cron 은 조용히 넘어가므로, 마이그레이�
 npx deno@2 check supabase/functions/sync/index.ts
 ```
 
+## 서체 — Pretendard (앱에 포함)
+
+예전엔 서체를 지정하지 않아 OS 가 골랐다. 윈도우에서는 라틴이 Segoe UI, 한글이 **맑은 고딕**으로 갈라져
+글자마다 리듬이 달랐다. 지금은 **Pretendard** 를 쓴다 (system-ui 대체용으로 만들어진 서체, SIL OFL).
+
+- **CDN 이 아니라 앱에 같이 넣는다** — 오프라인·PWA 에서도 서체가 유지되도록.
+- 전체 가변 폰트는 2MB 라 **서브셋**을 만들어 쓴다: `web/src/assets/fonts/pretendard-subset.woff2` (453KB).
+  KS X 1001 완성형 2350자 + 라틴·숫자·문장부호·화살표·도형. **굵기 축(45~930)은 그대로**라 파일 하나로 9단계를 다 쓴다.
+- 서브셋 밖 글자는 기존 시스템 스택으로 자연스럽게 떨어진다.
+- 다시 만들려면:
+
+  ```bash
+  pip install fonttools brotli
+  npm i -w web pretendard        # 원본 (devDependency)
+  python scripts/make-font-subset.py
+  ```
+
+  ⚠️ 완성형 2350자를 고를 때 `euc_kr` 로 거르면 안 된다 — 파이썬의 `euc_kr` 은 완성형에 없는 글자를
+  8바이트 조합형으로 인코딩해서 11172자가 전부 통과한다(서브셋이 1.7MB 가 된다). `iso2022_kr` 이 정확히 2350자만 받는다.
+
 ## 경로 지도
 
 훈련 상세에 **GPS 경로**를 그린다 (`web/src/components/exercise/RouteMap.tsx`).
