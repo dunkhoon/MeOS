@@ -14,6 +14,7 @@
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { whoIs } from '../_shared/auth.ts'
+import { GarminAuthError, GarminClient, type GarminGearStats } from '../_shared/garmin.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -51,7 +52,7 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
     const { userId, via } = await resolveUserId(req, admin)
-    const result = await runSync(admin, userId, full)
+    const result = await runSync(admin, userId, full, via)
     return json({ ok: true, ...result, via })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -76,7 +77,7 @@ async function resolveUserId(req: Request, admin: SupabaseClient): Promise<{ use
   return { userId: first.id, via: 'service' }
 }
 
-async function runSync(supabase: SupabaseClient, userId: string, full: boolean) {
+async function runSync(supabase: SupabaseClient, userId: string, full: boolean, via: 'jwt' | 'service' = 'jwt') {
   const athlete = Deno.env.get('INTERVALS_ATHLETE_ID')
   const apiKey = Deno.env.get('INTERVALS_API_KEY')
   if (!athlete || !apiKey) {
@@ -112,6 +113,8 @@ async function runSync(supabase: SupabaseClient, userId: string, full: boolean) 
     training_load: a.icu_training_load ?? null,
     device_name: a.device_name ?? null,
     hr_zone_times: Array.isArray(a.icu_hr_zone_times) ? a.icu_hr_zone_times : null,
+    // intervals.icu 의 external_id 가 Garmin 활동 id 다 — 러닝화 매칭에 쓴다
+    garmin_id: a.external_id != null ? String(a.external_id) : null,
     raw: a,
   }))
   if (activityRows.length) {
@@ -172,11 +175,17 @@ async function runSync(supabase: SupabaseClient, userId: string, full: boolean) 
     googleEvents = await syncGoogle(supabase, { clientId, clientSecret, refreshToken }, userId)
   }
 
+  // ── 러닝화 (Garmin) ──
+  // intervals.icu 는 gear 를 못 가져와서 Garmin 을 직접 본다. 연동을 안 했으면 조용히 건너뛴다.
+  const shoes = await syncShoes(supabase, userId, full || via === 'jwt')
+
   const detail = {
     activities: activityRows.length,
     wellness: wellnessRows.length,
     races: raceRows.length,
     events: googleEvents,
+    shoes: shoes.count,
+    shoesError: shoes.error,
     full,
   }
   await supabase
@@ -277,4 +286,90 @@ async function syncGoogle(
     if (error) throw error
   }
   return rows.length
+}
+
+// ── 러닝화 (Garmin) ────────────────────────────────────────
+/**
+ * Garmin 의 장비 목록·누적거리·활동 매칭을 가져온다.
+ *
+ * intervals.icu 는 Garmin 에서 FIT 파일만 받아 gear 가 안 넘어온다(개발자 확인, 2026-06).
+ * 그래서 Garmin 을 직접 보되, **여기(서버)에서** 보기 때문에 모바일에서도 결과가 보인다.
+ *
+ * @param force 사용자가 새로고침을 눌렀거나 full 동기화일 때 true.
+ *              cron(service)은 30분 안에 이미 돌았으면 건너뛴다 — 비공식 API 라 호출을 아낀다.
+ */
+async function syncShoes(
+  db: SupabaseClient,
+  userId: string,
+  force: boolean,
+): Promise<{ count: number | null; error: string | null }> {
+  try {
+    if (!force) {
+      const { data } = await db
+        .from('shoes')
+        .select('updated_at')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (data?.updated_at && Date.now() - Date.parse(data.updated_at) < 30 * 60 * 1000) {
+        return { count: null, error: null } // 최근에 돌았다 — 건너뜀
+      }
+    }
+
+    const garmin = await GarminClient.fromDb(db, userId)
+    if (!garmin) return { count: null, error: null } // 연동 안 함
+
+    const gear = await garmin.gear()
+    if (!gear.length) return { count: 0, error: null }
+
+    // 신발만. 자전거·심박벨트까지 끌고 오면 화면이 지저분해진다.
+    const shoes = gear.filter((g) => /shoe/i.test(g.gearTypeName ?? ''))
+
+    const rows = []
+    const links: { user_id: string; shoe_uuid: string; garmin_activity_id: string }[] = []
+    for (const g of shoes) {
+      // 누적 거리는 Garmin 기준(앱 밖 활동 포함)이라 따로 받아 온다
+      const stats = await garmin.gearStats(g.uuid).catch((): GarminGearStats => ({}))
+      rows.push({
+        user_id: userId,
+        uuid: g.uuid,
+        name: g.displayName ?? null,
+        model: g.customMakeModel ?? null,
+        gear_type: g.gearTypeName ?? null,
+        status: g.gearStatusName ?? null,
+        date_begin: g.dateBegin ? String(g.dateBegin).slice(0, 10) : null,
+        total_distance_m: stats.totalDistance ?? null,
+        total_activities: stats.totalActivities ?? null,
+        raw: g,
+        updated_at: new Date().toISOString(),
+      })
+
+      const acts = await garmin.gearActivities(g.uuid).catch(() => [])
+      for (const a of acts) {
+        if (a?.activityId != null) {
+          links.push({ user_id: userId, shoe_uuid: g.uuid, garmin_activity_id: String(a.activityId) })
+        }
+      }
+    }
+
+    const { error: se } = await db.from('shoes').upsert(rows, { onConflict: 'user_id,uuid' })
+    if (se) throw new Error(se.message)
+
+    // 매칭은 통째로 갈아 끼운다 — Garmin 에서 신발을 바꿔 달면 옛 연결이 남으면 안 된다.
+    // 목록을 다 받아온 뒤에 지우므로, 중간에 실패해도 지우기만 하고 끝나는 일은 없다.
+    const { error: de } = await db.from('shoe_activities').delete().eq('user_id', userId)
+    if (de) throw new Error(de.message)
+    for (let i = 0; i < links.length; i += 500) {
+      const { error } = await db.from('shoe_activities').insert(links.slice(i, i + 500))
+      if (error) throw new Error(error.message)
+    }
+
+    return { count: rows.length, error: null }
+  } catch (e) {
+    // 러닝화가 안 됐다고 운동 동기화 전체를 실패시키지 않는다
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[sync] 러닝화 실패:', msg)
+    return { count: null, error: e instanceof GarminAuthError ? msg : `러닝화 동기화 실패: ${msg}` }
+  }
 }

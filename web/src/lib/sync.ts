@@ -8,7 +8,17 @@
 
 import { supabase } from './supabase'
 
-export type SyncResult = { activities: number; wellness: number; races: number; events: number; full: boolean }
+export type SyncResult = {
+  activities: number
+  wellness: number
+  races: number
+  events: number
+  /** 러닝화 켤레 수. null 이면 연동 안 함 또는 최근에 이미 받아 건너뜀 */
+  shoes: number | null
+  /** 러닝화만 실패했을 때의 사유 (나머지 동기화는 성공) */
+  shoesError: string | null
+  full: boolean
+}
 
 export async function runIntervalsSync(opts: { full?: boolean } = {}): Promise<SyncResult> {
   const { data, error } = await supabase.functions.invoke<SyncResult & { ok: boolean; error?: string }>('sync', {

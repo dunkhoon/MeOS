@@ -2886,3 +2886,190 @@ code {
   font-size: 12px;
   margin-right: 2px;
 }
+
+/* ── 러닝화 ─────────────────────────────────── */
+.shoe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shoe-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 9px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shoe-row:hover {
+  background: var(--bg-elev);
+}
+.shoe-row.retired {
+  opacity: 0.5;
+}
+.shoe-thumb {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.shoe-thumb svg {
+  width: 22px;
+  height: 22px;
+}
+.shoe-thumb.big {
+  width: 76px;
+  height: 76px;
+}
+.shoe-thumb.big svg {
+  width: 42px;
+  height: 42px;
+}
+.shoe-main {
+  flex: 1;
+  min-width: 0;
+}
+.shoe-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.shoe-model {
+  font-size: 11.5px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shoe-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-elev);
+  overflow: hidden;
+}
+.shoe-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+.shoe-km {
+  flex-shrink: 0;
+  min-width: 104px;
+  text-align: right;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+.shoe-km .small {
+  margin-left: 8px;
+}
+.shoe-note {
+  margin-top: 10px;
+}
+
+/* 상세 */
+.shoe-modal {
+  max-width: 620px;
+  width: 100%;
+}
+.shoe-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.shoe-modal-head h3 {
+  margin: 0;
+}
+.shoe-modal-head .row-x {
+  opacity: 1;
+}
+.shoe-hero {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.shoe-hero-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+.shoe-hero-km {
+  font-size: 19px;
+  margin: 6px 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+.shoe-hero-km b {
+  color: var(--accent);
+}
+.shoe-acts-head {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.shoe-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.shoe-act {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.shoe-act:hover {
+  background: var(--bg-elev);
+}
+.shoe-act-date {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.shoe-act-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.shoe-act-pace,
+.shoe-act-km {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.shoe-act-km {
+  min-width: 62px;
+  text-align: right;
+}

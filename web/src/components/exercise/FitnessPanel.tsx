@@ -36,24 +36,12 @@ const METRICS: Metric[] = [
 ]
 
 export function FitnessPanel({ wellness }: { wellness: Wellness[] }) {
-  const [showGear, setShowGear] = useState(false)
   const data = fitnessSeries(wellness)
 
-  const action = (
-    <button className="ghost-btn" onClick={() => setShowGear((v) => !v)}>
-      {showGear ? 'Fitness 보기' : '러닝화 보기'}
-    </button>
-  )
-
+  // 러닝화는 이제 실제 데이터(Garmin)라 목록이 길어서 별도 전체폭 카드로 뺐다 (SPEC §3.1 변경).
   return (
-    <CollapsibleCard id="ex-fitness" title={showGear ? '러닝화' : 'Fitness (훈련부하)'} actions={action}>
-      {showGear ? (
-        <div className="muted small gear-empty">
-          러닝화 데이터가 아직 없어요.
-          <br />
-          Garmin 장비 연동은 후순위입니다 (SPEC §9).
-        </div>
-      ) : data.length === 0 ? (
+    <CollapsibleCard id="ex-fitness" title="Fitness (훈련부하)">
+      {data.length === 0 ? (
         <p className="muted small">데이터 없음</p>
       ) : (
         <>

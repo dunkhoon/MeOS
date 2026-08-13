@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { runIntervalsSync } from '../lib/sync'
 import { TrainingCalendar } from '../components/exercise/TrainingCalendar'
+import { ShoesPanel } from '../components/exercise/ShoesPanel'
 import {
   ZONE_COLORS,
   activityTypes,
@@ -94,7 +95,10 @@ export default function Exercise() {
       await load()
       setSyncMsg(
         `동기화 완료${full ? ' (전체 기간)' : ''} · 활동 ${r.activities} · 웰니스 ${r.wellness} · 대회 ${r.races}` +
-          (r.events ? ` · 일정 ${r.events}` : ''),
+          (r.events ? ` · 일정 ${r.events}` : '') +
+          (r.shoes ? ` · 러닝화 ${r.shoes}` : '') +
+          // 러닝화만 실패해도 나머지는 반영됐다 — 조용히 넘기지 않고 알린다
+          (r.shoesError ? ` (러닝화: ${r.shoesError})` : ''),
       )
     } catch (e) {
       setSyncMsg('동기화 실패: ' + (e instanceof Error ? e.message : String(e)))
@@ -260,6 +264,8 @@ export default function Exercise() {
       </div>
 
       <TrainingCalendar activities={filtered} />
+
+      <ShoesPanel />
 
       <div className="ex-grid">
         <DistanceChart activities={filtered} types={selectedTypes} />

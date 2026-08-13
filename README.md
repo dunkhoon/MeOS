@@ -71,6 +71,35 @@ npm run functions:deploy                            # = supabase functions deplo
   (`INTERVALS_ATHLETE_ID` · `INTERVALS_API_KEY` · `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN`).
 - `SUPABASE_URL` · `SUPABASE_ANON_KEY` · `SUPABASE_SERVICE_ROLE_KEY` 는 **자동 주입**되므로 등록하지 않는다.
 
+### 러닝화 (Garmin) — 선택
+
+**intervals.icu 는 Garmin 의 gear 를 못 가져온다.** Garmin Connect 에서 FIT 파일만 받기 때문이다
+(intervals.icu 개발자 확인, 2026-06). 그래서 러닝화만 Garmin 을 직접 본다.
+
+Garmin 은 개인용 공식 API 가 없고 2026-03 에 인증까지 바꿔 기존 라이브러리(garth)가 막혔다.
+그래서 **로그인만 PC 에서 1회**, 이후 조회는 Edge Function 이 한다 → 모바일에서도 보인다.
+
+```bash
+pip install -U garminconnect
+python scripts/garmin-login.py      # 이메일·비밀번호·(MFA) → garmin-tokens.json
+```
+
+생긴 `garmin-tokens.json` 을 `integration_tokens` 테이블에 넣으면 끝이다 (git 제외 파일):
+
+```sql
+-- SQL Editor. <토큰 JSON> 자리에 파일 내용을 그대로.
+insert into integration_tokens (user_id, provider, tokens, expires_at)
+select id, 'garmin', '<토큰 JSON>'::jsonb, now() + interval '20 hours' from auth.users limit 1
+on conflict (user_id, provider) do update set tokens = excluded.tokens, expires_at = excluded.expires_at;
+```
+
+- 이후 **새로고침·전체 기간** 을 누르면 러닝화도 같이 동기화된다. cron 은 30분 간격으로 제한한다
+  (비공식 API 라 호출을 아낀다).
+- ⚠️ **refresh token 은 갱신할 때마다 값이 바뀌고 유효기간이 30일**이다. 그래서 시크릿이 아니라 DB 에 두며
+  (함수가 시크릿을 못 쓴다), 30일 넘게 동기화가 없으면 위 로그인을 다시 해야 한다.
+- 신발↔활동 매칭은 추정이 아니다 — **intervals.icu 활동의 `external_id` 가 곧 Garmin 활동 id** 라 정확히 붙는다.
+- 사진은 안 가져온다. Garmin 이 `imageName*` 을 전부 null 로 주기 때문이다.
+
 ### 실행 방법
 
 | 어디서 | 어떻게 | 인증 |
