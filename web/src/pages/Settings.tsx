@@ -21,6 +21,7 @@ export default function Settings() {
         <>
           <AppUrlSetting />
           <P4Setting />
+          <ReviewSetting />
           <BtsSetting />
           <HotkeySetting />
           <SnippetManager />
@@ -464,6 +465,257 @@ function P4Setting() {
           <button className="btn-secondary" onClick={() => void test()} disabled={busy}>
             연결 테스트
           </button>
+          <button onClick={() => void save()} disabled={busy}>
+            저장
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── AI 코드 리뷰 (Windows 전용) ─────────────────────────────
+// 리뷰어를 1~N 개 등록해 두면 Perforce 화면의 “AI 리뷰” 가 그것들에게 동시에 같은 diff 를 보낸다.
+//
+// codex/claude 는 **CLI 를 그대로 실행**한다. API 키가 아니라 이미 로그인해 둔 구독 계정으로
+// 도는 게 목적이라, main 이 자식 프로세스 환경에서 ANTHROPIC_API_KEY 같은 값을 지운다.
+// 종류·모델·effort 후보 목록은 main 에서 내려받는다 — 여기에 다시 적으면 반드시 어긋난다.
+function ReviewSetting() {
+  const [cfg, setCfg] = useState<ReviewConfig | null>(null)
+  const [reviewers, setReviewers] = useState<Reviewer[]>([])
+  const [dir, setDir] = useState('')
+  const [codexPath, setCodexPath] = useState('')
+  const [claudePath, setClaudePath] = useState('')
+  const [maxDiffChars, setMaxDiffChars] = useState(120000)
+  const [timeoutMin, setTimeoutMin] = useState(15)
+  const [includeNewFiles, setIncludeNewFiles] = useState(true)
+  const [showPaths, setShowPaths] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = () =>
+    window.desktop?.review.getConfig().then((c) => {
+      setCfg(c)
+      setReviewers(c.reviewers)
+      setDir(c.dirIsDefault ? '' : c.dir)
+      setCodexPath(c.cli.codex.configured)
+      setClaudePath(c.cli.claude.configured)
+      setMaxDiffChars(c.maxDiffChars)
+      setTimeoutMin(c.timeoutMin)
+      setIncludeNewFiles(c.includeNewFiles)
+    })
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const save = async () => {
+    setBusy(true)
+    setMsg(null)
+    const r = await window.desktop?.review.setConfig({
+      dir,
+      codexPath,
+      claudePath,
+      maxDiffChars,
+      timeoutMin,
+      includeNewFiles,
+      reviewers,
+    })
+    setBusy(false)
+    setMsg(r?.ok ? '저장했습니다.' : (r?.error ?? '저장 실패'))
+    if (r?.ok) void load()
+  }
+
+  const patch = (id: string, next: Partial<Reviewer>) =>
+    setReviewers((prev) => prev.map((r) => (r.id === id ? { ...r, ...next } : r)))
+
+  const add = () => {
+    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `r${Date.now()}`
+    setReviewers((prev) => [...prev, { id, kind: 'local', model: '', effort: '', enabled: true }])
+  }
+
+  const pickDir = async () => {
+    const r = await window.desktop?.review.pickDir()
+    if (r?.ok && r.dir) setDir(r.dir)
+  }
+
+  if (!cfg) return null
+
+  const kindOf = (k: ReviewKind) => cfg.kinds[k]
+  const cliFor = (k: ReviewKind) => (k === 'codex' ? cfg.cli.codex : k === 'claude' ? cfg.cli.claude : null)
+
+  /** 리뷰어가 지금 실제로 돌 수 있는 상태인지 — 안 되면 이유를 보여준다. */
+  const blockedReason = (r: Reviewer): string | null => {
+    if (r.kind === 'local') return cfg.localReady ? null : '사내 LLM 주소·키가 없습니다 (위 Perforce 설정).'
+    const cli = cliFor(r.kind)
+    if (!cli?.found) return `${kindOf(r.kind)?.cli} CLI 를 찾지 못했습니다. 아래에서 경로를 지정하세요.`
+    return null
+  }
+
+  return (
+    <div className="card setting-card">
+      <h3 className="card-title">AI 코드 리뷰 (Perforce)</h3>
+      <p className="muted small">
+        Perforce 화면의 <b>AI 리뷰</b> 버튼이 여기 켜 둔 모델들에게 같은 diff 를 동시에 보냅니다. 결과는 md 파일로 이
+        PC에 저장되고, 같은 화면의 <b>리뷰 보기</b> 에서 다시 볼 수 있습니다.
+      </p>
+      {!cfg.platformOk && <p className="error small">이 기능은 Windows 에서만 동작합니다.</p>}
+
+      <div className="snippet-form">
+        <label>리뷰 모델 (1개 이상)</label>
+        <div className="rv-cfg-list">
+          {reviewers.length === 0 && <p className="muted small">모델이 없습니다. 아래에서 추가하세요.</p>}
+          {reviewers.map((r) => {
+            const kind = kindOf(r.kind)
+            const blocked = blockedReason(r)
+            return (
+              <div key={r.id} className={`rv-cfg-row ${r.enabled ? '' : 'off'}`}>
+                <label className="chk-line rv-cfg-on" title="이 모델 사용">
+                  <input type="checkbox" checked={r.enabled} onChange={(e) => patch(r.id, { enabled: e.target.checked })} />
+                </label>
+
+                <select
+                  value={r.kind}
+                  onChange={(e) => {
+                    const kindId = e.target.value as ReviewKind
+                    patch(r.id, { kind: kindId, model: '', effort: cfg.kinds[kindId]?.defaultEffort ?? '' })
+                  }}
+                >
+                  {(Object.keys(cfg.kinds) as ReviewKind[]).map((k) => (
+                    <option key={k} value={k}>
+                      {cfg.kinds[k].label}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  className="rv-cfg-model"
+                  list={`rv-models-${r.kind}`}
+                  value={r.model}
+                  onChange={(e) => patch(r.id, { model: e.target.value })}
+                  placeholder={
+                    r.kind === 'local'
+                      ? cfg.localModel || '사내 LLM 모델'
+                      : r.kind === 'codex'
+                        ? cfg.codexDefaultModel || 'codex 기본 모델'
+                        : 'claude 기본 모델'
+                  }
+                />
+                <datalist id={`rv-models-${r.kind}`}>
+                  {(kind?.models ?? []).map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+
+                {kind && kind.efforts.length > 0 ? (
+                  <select value={r.effort} onChange={(e) => patch(r.id, { effort: e.target.value })}>
+                    <option value="">effort 기본</option>
+                    {kind.efforts.map((ef) => (
+                      <option key={ef} value={ef}>
+                        {ef}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="muted small rv-cfg-noeffort">effort 없음</span>
+                )}
+
+                <span className={`chip ${kind?.external ? 'rv-ext' : 'rv-int'}`}>{kind?.external ? '사외' : '사내'}</span>
+
+                <button className="link-btn danger" onClick={() => setReviewers((p) => p.filter((x) => x.id !== r.id))}>
+                  삭제
+                </button>
+
+                {blocked && <p className="error small rv-cfg-warn">{blocked}</p>}
+              </div>
+            )
+          })}
+        </div>
+        <button className="sc-add-inline" onClick={add}>
+          ＋ 리뷰 모델 추가
+        </button>
+
+        <p className="muted small">
+          <b>사내</b> = 코드가 사내망 밖으로 나가지 않습니다. <b>사외</b> = Codex/Claude 서비스로 코드가 전송됩니다 —
+          회사 코드를 보내도 되는지 확인하고 켜세요. 두 CLI 는 API 키가 아니라 <b>이미 로그인해 둔 구독 계정</b>으로
+          동작합니다(<code>codex login</code> · <code>claude</code> 로그인).
+        </p>
+
+        <label>리뷰 저장 폴더</label>
+        <div className="p4-ws-tools">
+          <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder={cfg.defaultDir} />
+          <button type="button" className="ghost-btn small-btn" onClick={() => void pickDir()}>
+            폴더 고르기
+          </button>
+          <button type="button" className="ghost-btn small-btn" onClick={() => void window.desktop?.review.openDir()}>
+            열기
+          </button>
+        </div>
+        <p className="muted small">
+          비우면 기본 위치를 씁니다: <code>{cfg.defaultDir}</code>. 파일 이름은{' '}
+          <code>CL29580_20260814-153012.md</code> 처럼 리뷰한 시각이 들어갑니다.
+        </p>
+
+        <div className="rv-cfg-nums">
+          <label>
+            diff 최대 길이 (자)
+            <input
+              type="number"
+              min={10000}
+              max={800000}
+              step={10000}
+              value={maxDiffChars}
+              onChange={(e) => setMaxDiffChars(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            제한 시간 (분)
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={timeoutMin}
+              onChange={(e) => setTimeoutMin(Number(e.target.value))}
+            />
+          </label>
+        </div>
+        <label className="chk-line">
+          <input type="checkbox" checked={includeNewFiles} onChange={(e) => setIncludeNewFiles(e.target.checked)} />
+          <span>새로 추가한 파일의 본문도 보내기 — add 파일은 diff 가 안 나와서 이걸 꺼두면 이름만 갑니다</span>
+        </label>
+
+        <button className="link-btn rv-cfg-toggle" onClick={() => setShowPaths((v) => !v)}>
+          {showPaths ? '▾' : '▸'} CLI 경로 {cfg.cli.codex.found && cfg.cli.claude.found ? '(자동으로 찾음)' : '(확인 필요)'}
+        </button>
+        {showPaths && (
+          <>
+            {(['codex', 'claude'] as const).map((k) => {
+              const cli = cfg.cli[k]
+              return (
+                <div key={k}>
+                  <label>
+                    {cfg.kinds[k].label} 실행 파일{' '}
+                    {cli.found ? (
+                      <span className="muted small">· {cli.source === 'setting' ? '설정값' : `${cli.source} 에서 찾음`}</span>
+                    ) : (
+                      <span className="error small">· 찾지 못함</span>
+                    )}
+                  </label>
+                  <input
+                    value={k === 'codex' ? codexPath : claudePath}
+                    onChange={(e) => (k === 'codex' ? setCodexPath : setClaudePath)(e.target.value)}
+                    placeholder={cli.path || `${k}.exe 전체 경로`}
+                    spellCheck={false}
+                  />
+                </div>
+              )
+            })}
+            <p className="muted small">비워두면 PATH 와 npm 전역 설치 위치에서 자동으로 찾습니다.</p>
+          </>
+        )}
+
+        {msg && <p className="muted small">{msg}</p>}
+        <div className="modal-actions">
           <button onClick={() => void save()} disabled={busy}>
             저장
           </button>

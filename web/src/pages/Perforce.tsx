@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CollapsibleCard } from '../components/CollapsibleCard'
+import { ReviewHistoryModal, ReviewRunModal } from '../components/p4/Review'
 import { applyClick, planMove, toggleAll } from '../lib/p4move'
 
 // Perforce — PC 전용. p4 CLI 는 Electron main 에서 실행한다.
@@ -39,6 +40,17 @@ export default function Perforce() {
   // 서밋 로그 모달
   const [logFor, setLogFor] = useState<P4Change | null>(null)
 
+  // AI 코드 리뷰 — 실행 모달 / 기록 모달(change 가 null 이면 전체 기록)
+  const [reviewFor, setReviewFor] = useState<P4Change | null>(null)
+  const [histFor, setHistFor] = useState<{ change: P4Change | null } | null>(null)
+  /** CL 번호 → 저장된 리뷰 개수. "리뷰 3" 배지에 쓴다. */
+  const [reviewCounts, setReviewCounts] = useState<Record<string, number>>({})
+
+  const loadCounts = useCallback(async () => {
+    const r = await window.desktop?.review?.counts()
+    if (r?.ok) setReviewCounts(r.counts)
+  }, [])
+
   const load = useCallback(async () => {
     if (!window.desktop?.p4) return
     setLoading(true)
@@ -73,8 +85,11 @@ export default function Perforce() {
   }, [])
 
   useEffect(() => {
-    if (isDesktop) void load()
-  }, [isDesktop, load])
+    if (isDesktop) {
+      void load()
+      void loadCounts()
+    }
+  }, [isDesktop, load, loadCounts])
 
   const flash = (msg: string) => {
     setNotice(msg)
@@ -202,6 +217,9 @@ export default function Perforce() {
           </p>
         </div>
         <div className="p4-actions">
+          <button className="ghost-btn" onClick={() => setHistFor({ change: null })}>
+            리뷰 기록
+          </button>
           <button className="ghost-btn" onClick={() => setNewOpen(true)}>
             ＋ 새 체인지리스트
           </button>
@@ -303,6 +321,25 @@ export default function Perforce() {
               >
                 서밋 로그 작성
               </button>
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => setReviewFor(c)}
+                disabled={c.files.length === 0}
+                title={c.files.length === 0 ? '파일이 없어 리뷰할 게 없어요' : '설정에 켜 둔 모델들에게 코드 리뷰를 맡깁니다'}
+              >
+                AI 리뷰
+              </button>
+              {(reviewCounts[c.change] ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => setHistFor({ change: c })}
+                  title="이 체인지리스트의 지난 리뷰 보기"
+                >
+                  리뷰 보기 <span className="rv-badge">{reviewCounts[c.change]}</span>
+                </button>
+              )}
             </>
           }
         >
@@ -369,6 +406,22 @@ export default function Perforce() {
               void load()
             }
           }}
+        />
+      )}
+
+      {reviewFor && (
+        <ReviewRunModal
+          change={reviewFor}
+          onClose={() => setReviewFor(null)}
+          onSaved={() => void loadCounts()}
+        />
+      )}
+
+      {histFor && (
+        <ReviewHistoryModal
+          change={histFor.change}
+          onClose={() => setHistFor(null)}
+          onChanged={() => void loadCounts()}
         />
       )}
 

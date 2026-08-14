@@ -39,6 +39,8 @@ interface P4File {
   change: string
   type: string
   rev: string
+  /** 이 PC 안의 실제 경로 (신규 파일 본문을 읽을 때 쓴다) */
+  clientFile?: string
 }
 
 interface P4Change {
@@ -96,6 +98,107 @@ interface SubmitLogResult {
   binaryCount?: number
   /** 참고한 내 과거 서밋 수 */
   historyCount?: number
+}
+
+// ── AI 코드 리뷰 (Windows 전용) ──────────────────────────────
+
+/** codex = GPT, claude = Claude, local = 사내 LLM */
+type ReviewKind = 'codex' | 'claude' | 'local'
+
+interface ReviewKindSpec {
+  label: string
+  /** true 면 코드가 사외로 나간다 */
+  external: boolean
+  cli: string | null
+  efforts: string[]
+  defaultEffort: string
+  models: string[]
+  note: string
+}
+
+interface Reviewer {
+  id: string
+  kind: ReviewKind
+  /** 비우면 CLI/설정 기본 모델 */
+  model: string
+  effort: string
+  enabled: boolean
+}
+
+interface ReviewCliState {
+  path: string
+  found: boolean
+  source: 'setting' | 'npm' | 'PATH' | null
+  configured: string
+}
+
+interface ReviewConfig {
+  /** Windows 에서만 동작한다 */
+  platformOk: boolean
+  dir: string
+  dirIsDefault: boolean
+  defaultDir: string
+  maxDiffChars: number
+  timeoutMin: number
+  includeNewFiles: boolean
+  reviewers: Reviewer[]
+  kinds: Record<ReviewKind, ReviewKindSpec>
+  cli: { codex: ReviewCliState; claude: ReviewCliState }
+  codexDefaultModel: string
+  localModel: string
+  localReady: boolean
+}
+
+/** 저장된 리뷰 파일 한 건 (목록용 — 본문은 read 로 따로 읽는다) */
+interface ReviewFile {
+  file: string
+  change: string
+  createdAt: string
+  createdLocal: string
+  title: string
+  workspace: string
+  fileCount: number
+  reviewers: string[]
+  ok: number
+  failed: number
+  size: number
+}
+
+interface ReviewEntry {
+  id: string
+  kind: ReviewKind
+  label: string
+  ok: boolean
+  ms: number
+  error: string | null
+  chars: number
+}
+
+interface ReviewRunResult {
+  ok: boolean
+  error?: string
+  cancelled?: boolean
+  file?: string
+  dir?: string
+  /** 방금 저장한 md 본문 — 다시 읽지 않고 바로 보여준다 */
+  text?: string
+  diffChars?: number
+  diffTruncated?: boolean
+  diffError?: string | null
+  newFileCount?: number
+  entries?: ReviewEntry[]
+}
+
+interface ReviewProgress {
+  runId: string
+  phase: 'start' | 'running' | 'done' | 'error'
+  id?: string
+  kind?: ReviewKind
+  label?: string
+  ms?: number
+  error?: string | null
+  promptChars?: number
+  reviewers?: string[]
 }
 
 interface AppInfo {
@@ -159,6 +262,29 @@ interface DesktopBridge {
       description: string
       sendDiff?: boolean
     }) => Promise<SubmitLogResult>
+  }
+  review: {
+    getConfig: () => Promise<ReviewConfig>
+    setConfig: (cfg: {
+      dir: string
+      codexPath: string
+      claudePath: string
+      maxDiffChars: number
+      timeoutMin: number
+      includeNewFiles: boolean
+      reviewers: Reviewer[]
+    }) => Promise<{ ok: boolean; error?: string }>
+    pickDir: () => Promise<{ ok: boolean; dir?: string }>
+    run: (payload: { runId: string; change: string }) => Promise<ReviewRunResult>
+    cancel: (runId: string) => Promise<{ ok: boolean; error?: string }>
+    list: (change?: string | null) => Promise<{ ok: boolean; dir: string; reviews: ReviewFile[] }>
+    counts: () => Promise<{ ok: boolean; counts: Record<string, number> }>
+    read: (file: string) => Promise<{ ok: boolean; error?: string; text?: string; path?: string }>
+    remove: (file: string) => Promise<{ ok: boolean; error?: string }>
+    openDir: () => Promise<{ ok: boolean; error?: string }>
+    openFile: (file: string) => Promise<{ ok: boolean; error?: string }>
+    /** 해제 함수를 돌려준다 */
+    onProgress: (cb: (msg: ReviewProgress) => void) => () => void
   }
   bts: {
     getConfig: () => Promise<BtsConfig>

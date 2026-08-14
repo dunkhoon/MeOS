@@ -6,6 +6,7 @@
 // 주의 2: P4CHARSET=utf8 을 주지 않으면 한글 설명이 깨진다.
 
 const { spawn } = require('node:child_process')
+const fs = require('node:fs')
 
 const DEFAULT_TIMEOUT = 60000
 
@@ -230,6 +231,9 @@ async function pending(client, opts = {}) {
     change: r.change || 'default',
     type: r.type || '',
     rev: r.rev || '',
+    // 이 PC 안의 실제 경로. 새로 추가한 파일은 서버에 없어 diff 가 안 나오므로
+    // 코드 리뷰에서는 이 경로로 파일을 직접 읽는다.
+    clientFile: r.clientFile || '',
   }))
 
   const byChange = new Map()
@@ -362,6 +366,48 @@ async function diffForChange(client, change, files, { maxChars = 60000, root, ..
   return { diff, added, deleted, binary, truncated, error }
 }
 
+/**
+ * 새로 추가한 파일(add)의 본문을 워크스페이스에서 직접 읽는다.
+ *
+ * `p4 diff` 는 서버에 이미 있는 리비전과 비교하는 명령이라 add 파일에는 아무것도 내놓지 않는다.
+ * 서밋 로그라면 파일 이름만으로 충분하지만 **코드 리뷰에서는 신규 파일이 오히려 핵심**이라
+ * `p4 opened` 가 알려준 로컬 경로(clientFile)로 읽어 넘긴다.
+ */
+function readNewFiles(files, { maxFiles = 25, maxChars = 60000, maxPerFile = 12000 } = {}) {
+  const out = []
+  let used = 0
+  for (const f of files || []) {
+    if (!/add|branch/i.test(f.action || '') || isBinary(f)) continue
+    if (out.length >= maxFiles || used >= maxChars) break
+    if (!f.clientFile) {
+      out.push({ depotFile: f.depotFile, text: '', skipped: '로컬 경로를 알 수 없어 읽지 못했습니다.' })
+      continue
+    }
+    try {
+      const st = fs.statSync(f.clientFile)
+      if (!st.isFile()) continue
+      if (st.size > maxPerFile * 8) {
+        out.push({ depotFile: f.depotFile, text: '', skipped: `파일이 너무 큽니다 (${Math.round(st.size / 1024)}KB).` })
+        continue
+      }
+      let text = fs.readFileSync(f.clientFile, 'utf8')
+      // 텍스트가 아니면(널 바이트) 넘긴다 — type 만으로는 다 못 거른다
+      if (text.includes('\u0000')) {
+        out.push({ depotFile: f.depotFile, text: '', skipped: '텍스트 파일이 아닙니다.' })
+        continue
+      }
+      const room = Math.min(maxPerFile, maxChars - used)
+      const truncated = text.length > room
+      if (truncated) text = text.slice(0, room)
+      used += text.length
+      out.push({ depotFile: f.depotFile, text, truncated })
+    } catch (e) {
+      out.push({ depotFile: f.depotFile, text: '', skipped: e instanceof Error ? e.message : String(e) })
+    }
+  }
+  return out
+}
+
 /** diff 가 의미 없는 파일인지 (언리얼 에셋·이미지·사운드 등). */
 function isBinary(f) {
   if (/binary|apple|resource|symlink/i.test(f.type || '')) return true
@@ -383,5 +429,6 @@ module.exports = {
   setDescription,
   fileHistory,
   diffForChange,
+  readNewFiles,
   isBinary,
 }

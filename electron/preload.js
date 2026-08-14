@@ -55,6 +55,27 @@ contextBridge.exposeInMainWorld('desktop', {
     submitLog: (payload) => ipcRenderer.invoke('llm:submitLog', payload),
   },
 
+  // AI 코드 리뷰 (Windows 전용) — codex/claude CLI + 사내 LLM. 결과는 로컬 md 파일로 남는다.
+  review: {
+    getConfig: () => ipcRenderer.invoke('review:getConfig'),
+    setConfig: (cfg) => ipcRenderer.invoke('review:setConfig', cfg),
+    pickDir: () => ipcRenderer.invoke('review:pickDir'),
+    run: (payload) => ipcRenderer.invoke('review:run', payload),
+    cancel: (runId) => ipcRenderer.invoke('review:cancel', runId),
+    list: (change) => ipcRenderer.invoke('review:list', change ?? null),
+    counts: () => ipcRenderer.invoke('review:counts'),
+    read: (file) => ipcRenderer.invoke('review:read', file),
+    remove: (file) => ipcRenderer.invoke('review:delete', file),
+    openDir: () => ipcRenderer.invoke('review:openDir'),
+    openFile: (file) => ipcRenderer.invoke('review:openFile', file),
+    // 진행 상황 구독. 해제 함수를 돌려준다 (모달이 닫힐 때 떼어내야 한다).
+    onProgress: (cb) => {
+      const h = (_e, msg) => cb(msg)
+      ipcRenderer.on('review:progress', h)
+      return () => ipcRenderer.removeListener('review:progress', h)
+    },
+  },
+
   // BTS (Redmine / JIRA) — 데스크톱 전용 실시간 조회. 결과는 메모리로만 전달된다.
   bts: {
     getConfig: () => ipcRenderer.invoke('bts:getConfig'),

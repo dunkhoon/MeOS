@@ -32,7 +32,7 @@
 | **대시보드 홈** | 위젯: 오늘/이번주 일정, 마감·진행 업무\*, 훈련부하·최근 활동, 컨디션 요약 (\*업무 위젯은 데스크톱 전용) | (집계) |
 | **캘린더/일정** | 월·주·일 뷰 조회 | Google Calendar (읽기) |
 | **업무** | 진행 중인 업무 · BTS 이슈 · 할 일 · 루틴 (§3.2). ⚠️**BTS 목록만** 데스크톱 전용 | 사내 Redmine + 회사 JIRA (읽기) |
-| **Perforce** ⚠️데스크톱 전용 | Pending 체인지리스트 · CL 간 파일 이동 · **서밋 로그 AI 작성** (§3.3) | 사내 Perforce + 사내 LLM |
+| **Perforce** ⚠️데스크톱 전용 | Pending 체인지리스트 · CL 간 파일 이동 · **서밋 로그 AI 작성** · **AI 코드 리뷰**(Windows) (§3.3) | 사내 Perforce + 사내 LLM + (선택) Codex/Claude CLI |
 | **운동** | 훈련부하(Form/CTL/ATL/TSB), 활동 상세, 컨디션/웰니스, 거리 추이·장비 | intervals.icu API |
 | **리포트/회고** | 개인 데이터의 **자동** 주간·월간 요약 (업무 제외) | (집계) |
 
@@ -118,6 +118,28 @@ Enter/포커스 아웃 = 저장, Esc = 취소, 빈 제목은 무시. 편집 입�
   `WBP : 토너먼트 메인 UI 구성 수정` 처럼 파일 종류 + 한 줄 요약만 적는다(내부 추측 금지).
 
 모델 출력은 `{content, issue, items[]}` JSON 으로 받고 **양식 조립은 코드가 한다**(`llm.composeLog`).
+
+**AI 코드 리뷰** ⚠️Windows 전용 (2026-08-14 추가)
+
+CL 마다 `AI 리뷰` → 설정에 켜 둔 리뷰어 1~N 개에게 **같은 프롬프트를 동시에** 보내고, 결과를 md 한 벌로
+로컬에 저장한다. `리뷰 보기`(그 CL) / `리뷰 기록`(전체)에서 다시 보고 지운다.
+
+| 종류 | 실행 | 설정 가능 | 코드 전송 |
+| --- | --- | --- | --- |
+| `codex` | `codex exec -` CLI | model · reasoning effort(low~xhigh) | **사외** |
+| `claude` | `claude -p` CLI | model · effort(low~max) | **사외** |
+| `local` | 사내 LLM (OpenAI 호환) | model | 사내망 |
+
+- **auth 방식 고정** — API 키가 아니라 이미 로그인해 둔 구독 계정을 쓴다. 그래서 자식 프로세스 환경에서
+  `ANTHROPIC_*` / `OPENAI_*` 키를 지운다(`review.API_ENV_KEYS`). 남아 있으면 CLI 가 로그인 대신 키를 쓴다.
+- **입력은 셋 다 동일** — diff + 신규 파일 본문 + 파일 목록. 리뷰어가 워크스페이스를 뒤지지 않게
+  `claude --tools ""` · `codex --sandbox read-only` 로 도구를 막는다(결과 비교가 목적).
+- **신규 파일**은 `p4 diff` 가 비어 있으므로 `p4 opened` 의 `clientFile` 로 로컬 파일을 직접 읽는다
+  (`p4.readNewFiles`). 서밋 로그와 달리 리뷰에서는 신규 파일이 핵심이다.
+- **저장** — `CL29580_20260814-153012.md` (파일명에 시각). 프론트매터에 CL·시각·리뷰어·성공/실패를 적어
+  목록을 파일만 읽고 만든다(`reviewStore`). 기본 위치 `userData/reviews`, 설정에서 변경 가능.
+- 렌더러가 넘긴 파일 목록은 믿지 않는다 — `review:run` 은 `p4 pending` 을 다시 조회한다(로컬 경로 필요 + 최신성).
+  파일명도 `^[A-Za-z0-9_.-]+\.md$` 로 검증해 경로 탈출을 막는다.
 자유 형식으로 받으면 이름·대괄호·불릿이 매번 흔들리기 때문.
 P4USER 가 공용 계정이라 "내 서밋" 구분은 설명의 `[이름]` 접두어로 한다.
 
@@ -202,6 +224,7 @@ Electron 은 창·트레이·전역 단축키와 로컬 권한이 필요한 일(
 | intervals.icu | API Key (Basic auth) | Edge Function(cron) | ✅ 저장 | PC + 모바일 |
 | 사내 Perforce | p4 CLI (티켓) | **Electron(데스크톱)** | ❌ 미저장 | 데스크톱만 |
 | 사내 LLM (llm.aquatree.games) | API Key (Bearer) | **Electron(데스크톱)** | ❌ 미저장 | 데스크톱만 |
+| Codex / Claude CLI (AI 코드 리뷰, 선택) | **구독 로그인** (앱은 키를 갖지 않음) | **Electron(데스크톱, Windows)** | ❌ 미저장 · 결과는 로컬 md | 데스크톱만 |
 | 사내 Redmine | REST API Key | **Electron(데스크톱)** | ❌ 미저장 | 데스크톱만 |
 | 회사 JIRA (Atlassian 클라우드) | API 토큰(email+token) | **Electron(데스크톱)** | ❌ 미저장 | 데스크톱만 |
 | Garmin (장비/러닝화) | 계정 로그인 (비공식 API) | **후순위** · Electron/사이드카 미정 | ✅ 저장 예정 | PC + 모바일 (후순위) |
@@ -239,8 +262,12 @@ Electron 은 창·트레이·전역 단축키와 로컬 권한이 필요한 일(
 - **회사 업무 토큰(JIRA, Redmine API Key)은 데스크톱에만 보관** — Electron OS 키체인(safeStorage). 클라우드로 전송하지 않음.
 - **AI 서밋 로그는 사내 LLM 만 쓴다.** 소스코드(diff)가 사외로 나가면 안 되므로 Anthropic API 같은
   외부 API 는 쓰지 않는다. `llm.aquatree.games` 는 사내망 안이라 diff 를 통째로 보내도 회사 밖으로 나가지 않는다.
-  (`claude -p` 도 결국 Anthropic 서버를 거치므로 대안이 아니다 — 2026-08-07 검토.)
   LLM API 키는 데스크톱 safeStorage 에만 보관한다.
+- **AI 코드 리뷰는 사외 모델을 선택적으로 허용한다** (2026-08-14, 위 2026-08-07 판단 변경).
+  검수는 작성한 것과 다른 모델이 봐야 의미가 있어서 사용자가 Codex/Claude 를 고를 수 있게 했다.
+  대신 ①기본값은 사내 LLM 하나뿐, ②리뷰어마다 `사내`/`사외` 를 화면에 표시, ③사외가 켜져 있으면
+  실행 전에 "코드가 회사 밖으로 전송된다" 고 경고한다. **서밋 로그 경로는 그대로 사내 LLM 전용이다.**
+  두 CLI 는 API 키가 아니라 구독 로그인으로 돌린다(키를 앱이 들고 있지 않는다).
 - **BTS 이슈 목록과 접속 토큰은 클라우드로 전송하지 않는다.** 다만 내가 진행 중인 업무로 끌어다 놓은 항목의
   이슈번호·제목·트래커·목표버전은 `work_items` 에 저장된다 (§2 원칙 변경, 2026-08-07).
 - 클라이언트는 개인 데이터 접근 시 Supabase Auth 세션(매직링크 로그인)만 사용(토큰 미보유).

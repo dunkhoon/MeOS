@@ -2896,6 +2896,410 @@ code {
   white-space: nowrap;
 }
 
+/* ── AI 코드 리뷰 ────────────────────────────────────────────
+   리뷰 실행·기록 모달은 md 본문을 그대로 보여줘야 해서 기본 모달보다 넓다. */
+.modal-wide {
+  width: 900px;
+  max-width: 100%;
+}
+.rv-badge {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+/* 사내 = 코드가 밖으로 안 나감 / 사외 = 나감. 색으로도 구분해 둔다. */
+.chip.rv-int {
+  background: color-mix(in srgb, var(--h-green) 15%, transparent);
+  color: var(--h-green);
+  border-color: color-mix(in srgb, var(--h-green) 35%, transparent);
+}
+.chip.rv-ext {
+  background: color-mix(in srgb, var(--h-orange) 15%, transparent);
+  color: var(--h-orange);
+  border-color: color-mix(in srgb, var(--h-orange) 35%, transparent);
+}
+
+.rv-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+}
+.rv-plan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: 13px;
+}
+.rv-warn {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--h-orange) 40%, transparent);
+  background: color-mix(in srgb, var(--h-orange) 10%, transparent);
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.rv-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 6px;
+}
+.rv-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+  font-size: 13px;
+}
+.rv-row.st-wait {
+  opacity: 0.6;
+}
+.rv-st {
+  flex-shrink: 0;
+  width: 16px;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--muted);
+}
+.rv-row.st-ok .rv-st {
+  color: var(--ok);
+}
+.rv-row.st-fail .rv-st {
+  color: var(--danger);
+}
+.rv-row-note {
+  margin-left: auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.rv-err {
+  white-space: pre-wrap;
+}
+
+/* 저장된 md 본문 */
+.rv-doc {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  max-height: 52vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.rv-doc-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.rv-file {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: auto;
+  overflow-wrap: anywhere;
+}
+
+/* 기록 모달 — 왼쪽 목록 + 오른쪽 본문 */
+.rv-hist-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.rv-hist-head code {
+  overflow-wrap: anywhere;
+}
+.rv-hist-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.rv-hist-body {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 14px;
+}
+.rv-hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+  min-width: 0;
+}
+.rv-hist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.rv-hist-item:hover {
+  background: var(--border);
+}
+.rv-hist-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.rv-hist-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: space-between;
+}
+.rv-hist-title,
+.rv-hist-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rv-fail {
+  color: var(--danger);
+}
+.rv-hist-view {
+  min-width: 0;
+}
+.rv-hist-view .rv-doc {
+  margin-top: 0;
+  max-height: 60vh;
+}
+
+/* 설정 — 리뷰어 목록 */
+.rv-cfg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.rv-cfg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+}
+.rv-cfg-row.off {
+  opacity: 0.5;
+}
+.rv-cfg-row select {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.rv-cfg-row select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.rv-cfg-on {
+  margin: 0;
+}
+.rv-cfg-model {
+  /* 최소폭을 줘야 옆 요소들에 밀려 찌부러지지 않는다 (좁아지면 줄이 접힌다) */
+  flex: 1 1 10rem;
+  min-width: 0;
+  background: var(--bg-card) !important;
+}
+.rv-cfg-noeffort {
+  flex-shrink: 0;
+}
+.rv-cfg-warn {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}
+.rv-cfg-nums {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.rv-cfg-nums label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+.rv-cfg-toggle {
+  align-self: flex-start;
+  margin-top: 10px;
+}
+
+/* ── 작은 마크다운 렌더러 (lib/markdown.tsx) ──────────────── */
+.md {
+  font-size: 13.5px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+.md > *:first-child {
+  margin-top: 0;
+}
+.md-h {
+  margin: 18px 0 8px;
+  line-height: 1.4;
+}
+.md-h1 {
+  font-size: 17px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.md-h2 {
+  font-size: 15.5px;
+}
+.md-h3 {
+  font-size: 14px;
+}
+.md-h4,
+.md-h5,
+.md-h6 {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.md-p {
+  margin: 8px 0;
+}
+.md-list {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.md-list li {
+  margin: 3px 0;
+}
+.md-quote {
+  margin: 8px 0;
+  padding: 2px 12px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+.md-quote p {
+  margin: 4px 0;
+}
+.md code {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-family: 'Consolas', 'D2Coding', monospace;
+  font-size: 12.5px;
+}
+.md-code {
+  margin: 10px 0;
+  padding: 11px 13px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.md-code code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre;
+}
+.md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+.md a {
+  color: var(--info);
+}
+.md-table-wrap {
+  overflow-x: auto;
+  margin: 10px 0;
+}
+.md-table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.md-table th,
+.md-table td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.md-table th {
+  background: var(--bg-card);
+}
+/* 리뷰 프롬프트가 쓰게 시킨 심각도 표시 */
+.md-sev {
+  display: inline-block;
+  margin-right: 7px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.md-sev.sev-high {
+  color: var(--h-red);
+  background: color-mix(in srgb, var(--h-red) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-red) 40%, transparent);
+}
+.md-sev.sev-mid {
+  color: var(--h-orange);
+  background: color-mix(in srgb, var(--h-orange) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-orange) 40%, transparent);
+}
+.md-sev.sev-low {
+  color: var(--h-blue);
+  background: color-mix(in srgb, var(--h-blue) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-blue) 40%, transparent);
+}
+
+/* 좁은 창에서는 기록 모달을 한 줄로 쌓는다 */
+@media (max-width: 820px) {
+  .rv-hist-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rv-hist-list {
+    max-height: 26vh;
+  }
+}
+
 /* 휴지통 */
 .trash-filters {
   display: flex;

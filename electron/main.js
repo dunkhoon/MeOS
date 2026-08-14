@@ -10,13 +10,17 @@ const {
   safeStorage,
   nativeImage,
   session,
+  dialog,
 } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
+const os = require('node:os')
 const { randomUUID } = require('node:crypto')
 const bts = require('./bts')
 const p4 = require('./p4')
 const llm = require('./llm')
+const review = require('./review')
+const reviewStore = require('./reviewStore')
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
 /** 배포 주소 기본값 — 설정에 저장된 값이 있으면 그쪽이 이긴다. */
@@ -47,6 +51,9 @@ function btsPath() {
 }
 function p4CfgPath() {
   return path.join(app.getPath('userData'), 'pp-p4.json')
+}
+function reviewCfgPath() {
+  return path.join(app.getPath('userData'), 'pp-review.json')
 }
 function readJson(p, fallback) {
   try {
@@ -575,6 +582,276 @@ ipcMain.handle('llm:submitLog', async (_e, { change, files, description, sendDif
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
+// ── AI 코드 리뷰 (Windows 전용) ────────────────────────────
+// 같은 CL diff 를 설정에 켜 둔 리뷰어들에게 동시에 보내고, 결과를 md 한 벌로 로컬에 남긴다.
+// codex/claude 는 CLI 를 그대로 실행한다 — API 키가 아니라 이미 로그인해 둔 구독 계정으로 돈다.
+//
+// ⚠ codex/claude 는 사외 서비스다. 켜는 순간 회사 코드가 밖으로 나간다는 뜻이라
+//   기본값은 사내 LLM 하나뿐이고, 화면에서도 사내/사외를 구분해 표시한다.
+
+function defaultReviewDir() {
+  return path.join(app.getPath('userData'), 'reviews')
+}
+
+/** codex 가 평소 쓰는 모델 — 설정 화면 placeholder 로 보여준다. */
+function codexDefaultModel() {
+  try {
+    const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+    const m = fs.readFileSync(path.join(home, 'config.toml'), 'utf8').match(/^\s*model\s*=\s*"([^"]+)"/m)
+    return m ? m[1] : ''
+  } catch {
+    return ''
+  }
+}
+
+const DEFAULT_REVIEWERS = [{ id: 'local-1', kind: 'local', model: '', effort: '', enabled: true }]
+
+function resolveReviewConfig() {
+  const saved = readJson(reviewCfgPath(), {})
+  const p4cfg = resolveP4Config()
+  const list = Array.isArray(saved.reviewers) && saved.reviewers.length ? saved.reviewers : DEFAULT_REVIEWERS
+  return {
+    dir: (saved.dir || '').trim() || defaultReviewDir(),
+    dirIsDefault: !(saved.dir || '').trim(),
+    codexPath: (saved.codexPath || '').trim(),
+    claudePath: (saved.claudePath || '').trim(),
+    maxDiffChars: Number(saved.maxDiffChars) || 120000,
+    timeoutMin: Math.min(60, Math.max(1, Number(saved.timeoutMin) || 15)),
+    includeNewFiles: saved.includeNewFiles !== false,
+    reviewers: list.map((r, i) => ({
+      id: String(r.id || `r${i + 1}`),
+      kind: review.KINDS[r.kind] ? r.kind : 'local',
+      model: String(r.model || '').trim(),
+      effort: String(r.effort || '').trim(),
+      enabled: r.enabled !== false,
+    })),
+    // 사내 LLM 리뷰어는 모델을 안 고르면 Perforce 설정의 모델을 그대로 쓴다
+    localModel: p4cfg.model,
+    llm: p4cfg.llm,
+  }
+}
+
+/** 리뷰어 하나가 실제로 쓸 모델 이름 (빈 값이면 CLI 기본값에 맡긴다). */
+function modelFor(r, cfg) {
+  if (r.kind === 'local') return r.model || cfg.localModel
+  return r.model
+}
+
+/** 진행 중인 리뷰 — 취소하려면 자식 프로세스를 들고 있어야 한다. */
+const activeRuns = new Map()
+
+ipcMain.handle('review:getConfig', () => {
+  const cfg = resolveReviewConfig()
+  return {
+    platformOk: process.platform === 'win32',
+    dir: cfg.dir,
+    dirIsDefault: cfg.dirIsDefault,
+    defaultDir: defaultReviewDir(),
+    maxDiffChars: cfg.maxDiffChars,
+    timeoutMin: cfg.timeoutMin,
+    includeNewFiles: cfg.includeNewFiles,
+    reviewers: cfg.reviewers,
+    kinds: review.KINDS,
+    cli: {
+      codex: { ...review.resolveCli('codex', cfg.codexPath), configured: cfg.codexPath },
+      claude: { ...review.resolveCli('claude', cfg.claudePath), configured: cfg.claudePath },
+    },
+    codexDefaultModel: codexDefaultModel(),
+    localModel: cfg.localModel,
+    localReady: !!(cfg.llm.baseUrl && cfg.llm.apiKey),
+  }
+})
+
+ipcMain.handle('review:setConfig', (_e, cfg) => {
+  if (!cfg || typeof cfg !== 'object') return { ok: false, error: '잘못된 설정' }
+  const reviewers = (Array.isArray(cfg.reviewers) ? cfg.reviewers : []).map((r, i) => ({
+    id: String(r.id || `r${i + 1}`),
+    kind: review.KINDS[r.kind] ? r.kind : 'local',
+    model: String(r.model || '').trim(),
+    effort: String(r.effort || '').trim(),
+    enabled: r.enabled !== false,
+  }))
+  writeJson(reviewCfgPath(), {
+    dir: (cfg.dir || '').trim(),
+    codexPath: (cfg.codexPath || '').trim(),
+    claudePath: (cfg.claudePath || '').trim(),
+    maxDiffChars: Number(cfg.maxDiffChars) || 120000,
+    timeoutMin: Math.min(60, Math.max(1, Number(cfg.timeoutMin) || 15)),
+    includeNewFiles: cfg.includeNewFiles !== false,
+    reviewers,
+  })
+  return { ok: true }
+})
+
+ipcMain.handle('review:pickDir', async () => {
+  const cur = resolveReviewConfig().dir
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: '리뷰를 저장할 폴더',
+    defaultPath: fs.existsSync(cur) ? cur : app.getPath('documents'),
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (r.canceled || !r.filePaths.length) return { ok: false }
+  return { ok: true, dir: r.filePaths[0] }
+})
+
+ipcMain.handle('review:list', (_e, change) => {
+  const cfg = resolveReviewConfig()
+  return { ok: true, dir: cfg.dir, reviews: reviewStore.list(cfg.dir, { change: change ?? null }) }
+})
+
+ipcMain.handle('review:counts', () => {
+  const cfg = resolveReviewConfig()
+  return { ok: true, counts: reviewStore.counts(cfg.dir) }
+})
+
+ipcMain.handle('review:read', (_e, file) => reviewStore.read(resolveReviewConfig().dir, file))
+ipcMain.handle('review:delete', (_e, file) => reviewStore.remove(resolveReviewConfig().dir, file))
+
+ipcMain.handle('review:openDir', async () => {
+  const dir = reviewStore.ensureDir(resolveReviewConfig().dir)
+  const err = await shell.openPath(dir)
+  return { ok: !err, error: err || undefined }
+})
+
+ipcMain.handle('review:openFile', async (_e, file) => {
+  const cfg = resolveReviewConfig()
+  const p = reviewStore.safePath(cfg.dir, file)
+  if (!p) return { ok: false, error: '잘못된 파일 이름입니다.' }
+  const err = await shell.openPath(p)
+  return { ok: !err, error: err || undefined }
+})
+
+ipcMain.handle('review:cancel', (_e, runId) => {
+  const run = activeRuns.get(runId)
+  if (!run) return { ok: false, error: '진행 중인 리뷰가 없습니다.' }
+  run.cancelled = true
+  for (const c of run.children) review.killTree(c)
+  return { ok: true }
+})
+
+ipcMain.handle('review:run', async (e, payload) => {
+  if (process.platform !== 'win32') return { ok: false, error: '이 기능은 Windows 에서만 동작합니다.' }
+
+  const runId = String((payload && payload.runId) || randomUUID())
+  const change = String((payload && payload.change) || '')
+  const cfg = resolveReviewConfig()
+  const p4cfg = resolveP4Config()
+
+  if (!p4cfg.workspace) return { ok: false, error: '워크스페이스가 선택되지 않았습니다. 설정에서 고르세요.' }
+  const reviewers = cfg.reviewers.filter((r) => r.enabled)
+  if (!reviewers.length) return { ok: false, error: '설정 → AI 코드 리뷰 에서 리뷰 모델을 하나 이상 켜세요.' }
+
+  // 렌더러가 넘긴 파일 목록을 믿지 않고 다시 조회한다 — 신규 파일을 읽으려면 로컬 경로가 필요하고,
+  // 리뷰 도중 파일이 바뀌었을 수도 있다.
+  let target = null
+  try {
+    const { changes } = await p4.pending(p4cfg.workspace, p4opts(p4cfg))
+    target = changes.find((c) => String(c.change) === change) || null
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+  if (!target) return { ok: false, error: `${change === 'default' ? 'default' : `CL ${change}`} 을(를) 찾지 못했습니다. 새로고침해 보세요.` }
+  if (!target.files.length) return { ok: false, error: '파일이 없는 체인지리스트는 리뷰할 수 없습니다.' }
+
+  // diff — 서밋 로그보다 훨씬 넉넉하게 가져온다 (리뷰는 내용을 봐야 한다)
+  let diffRes = { diff: '', added: [], deleted: [], binary: [], truncated: false, error: null }
+  try {
+    diffRes = await p4.diffForChange(p4cfg.workspace, change, target.files, {
+      ...p4opts(p4cfg),
+      maxChars: cfg.maxDiffChars,
+    })
+  } catch (err) {
+    diffRes.error = err instanceof Error ? err.message : String(err)
+  }
+  const newFiles = cfg.includeNewFiles ? p4.readNewFiles(target.files) : []
+
+  const prompt = review.buildReviewPrompt({
+    change,
+    description: target.description,
+    workspace: p4cfg.workspace,
+    files: target.files,
+    diff: diffRes.diff,
+    added: diffRes.added,
+    deleted: diffRes.deleted,
+    binary: diffRes.binary,
+    newFiles,
+    truncated: diffRes.truncated,
+    diffError: diffRes.error,
+  })
+
+  const tmpDir = reviewStore.ensureDir(path.join(app.getPath('temp'), 'meos-review'))
+  const run = { children: new Set(), cancelled: false }
+  activeRuns.set(runId, run)
+
+  const send = (msg) => {
+    if (!e.sender.isDestroyed()) e.sender.send('review:progress', { runId, ...msg })
+  }
+  send({ phase: 'start', promptChars: prompt.length, reviewers: reviewers.map((r) => r.id) })
+
+  const ctx = {
+    cli: {
+      codex: review.resolveCli('codex', cfg.codexPath),
+      claude: review.resolveCli('claude', cfg.claudePath),
+    },
+    llmCfg: cfg.llm,
+    timeoutMs: cfg.timeoutMin * 60000,
+    tmpDir,
+    onChild: (c) => run.children.add(c),
+  }
+
+  const results = await Promise.all(
+    reviewers.map(async (r) => {
+      const spec = { ...r, model: modelFor(r, cfg) }
+      const label = review.reviewerLabel(spec)
+      send({ phase: 'running', id: r.id, kind: r.kind, label })
+      const res = await review.runReviewer(prompt, spec, ctx)
+      send({ phase: res.ok ? 'done' : 'error', id: r.id, kind: r.kind, label, ms: res.ms, error: res.error || null })
+      return { ...res, id: r.id, kind: r.kind, label }
+    }),
+  )
+
+  activeRuns.delete(runId)
+  if (run.cancelled) return { ok: false, cancelled: true, error: '리뷰를 취소했습니다.' }
+
+  const at = new Date()
+  const md = review.renderReviewMarkdown({
+    change,
+    description: target.description,
+    workspace: p4cfg.workspace,
+    files: target.files,
+    results,
+    diffMeta: { truncated: diffRes.truncated, binaryCount: (diffRes.binary || []).length },
+    at,
+  })
+
+  let saved
+  try {
+    saved = reviewStore.save(cfg.dir, change, md, at)
+  } catch (err) {
+    return { ok: false, error: `리뷰는 끝났지만 파일 저장에 실패했습니다: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  return {
+    ok: true,
+    file: saved.file,
+    dir: cfg.dir,
+    text: md,
+    diffChars: (diffRes.diff || '').length,
+    diffTruncated: diffRes.truncated,
+    diffError: diffRes.error,
+    newFileCount: newFiles.filter((n) => n.text).length,
+    entries: results.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      label: r.label,
+      ok: r.ok,
+      ms: r.ms,
+      error: r.error || null,
+      chars: r.ok ? r.text.length : 0,
+    })),
   }
 })
 
