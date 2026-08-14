@@ -1650,7 +1650,9 @@ code {
   margin: 0;
   font-size: 15px;
   min-width: 0;
-  overflow-wrap: anywhere;
+  /* anywhere 는 "월간 훈련 캘린/더" 처럼 단어 한가운데를 자른다.
+     break-word 는 한 단어가 통째로 안 들어갈 때만 자른다. */
+  overflow-wrap: break-word;
 }
 
 /* 접이식 카드 헤더 */
@@ -3431,8 +3433,28 @@ code {
   .tcal-km {
     font-size: 12px;
   }
+  /* 한 칸이 20~30px 뿐이라 "RECOVERY" 를 넣어도 "RE…" 만 남는다.
+     색 막대로 바꾸면 세션 종류(색)와 개수가 그대로 읽히고 누르는 자리도 살아 있다.
+     종류 이름은 아래 범례에서 본다. 색은 이미 인라인 style 의 color 로 들어와 있어
+     currentColor 로 그대로 쓴다. */
+  .tcal-acts {
+    gap: 3px;
+  }
   .tcal-act {
-    font-size: 8px;
+    /* box-sizing: border-box 라 높이 14px - 위아래 패딩 10px = 막대 4px.
+       보이는 건 4px 인데 손가락이 닿는 자리는 14px 이 된다. */
+    height: 14px;
+    padding: 5px 0;
+    font-size: 0;
+    line-height: 0;
+    border-radius: 2px;
+    background: currentColor;
+    background-clip: content-box;
+    opacity: 1;
+  }
+  .tcal-act:hover {
+    text-decoration: none;
+    opacity: 0.75;
   }
 }
 
