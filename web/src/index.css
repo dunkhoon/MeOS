@@ -190,7 +190,9 @@
   --bg-card: #ffffff;
   --border: #ccd0da;
   --text: #4c4f69;
-  --muted: #7c7f93;
+  /* overlay2(#7c7f93)는 Catppuccin 에서 **오버레이/테두리용** 이라 본문 옆 보조글자로 쓰면
+     밝은 판에서 3.5:1 밖에 안 나온다. 글자용 swatch 인 subtext1 로 바꾼다 (5.5:1). */
+  --muted: #5c5f77;
   --accent: #8839ef;
   --on-accent: #ffffff;
   --h-red: #d20f39;
@@ -230,7 +232,9 @@
   --bg-card: #fdf6e3;
   --border: #ddd6c1;
   --text: #073642;
-  --muted: #657b83;
+  /* base00(#657b83)은 Solarized 밝은 판의 **본문색**이다. 본문을 그보다 진한 base02 로 쓰는
+     이 앱에서는 보조글자로 너무 옅어 3.6:1 → 강조 글자색 base01 로 (4.7:1). */
+  --muted: #586e75;
   --accent: #268bd2;
   --on-accent: #fdf6e3;
   --h-red: #dc322f;
@@ -495,7 +499,9 @@ button:disabled {
 }
 .nav-item.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  /* 액센트 원색은 밝은 테마에서 14px 글자로 얇다 (Solarized 3.2:1).
+     --text 쪽으로 조금 섞어 테마와 무관하게 읽히게 한다. */
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
 .nav-icon {
   width: 18px;
@@ -647,11 +653,16 @@ button:disabled {
   color: var(--muted);
   padding: 6px 0;
 }
-.cal-wd.sun {
-  color: var(--danger);
+/* 일=빨강 · 토=파랑. 팔레트 원색 그대로 쓰면 밝은 테마의 12px 글자로는 얇다
+   (Solarized 의 파랑은 3.2:1). --text 쪽으로 조금 섞으면 밝은 테마에선 진해지고
+   어두운 테마에선 밝아져, 테마를 가리지 않고 읽힌다. */
+.cal-wd.sun,
+.cal-daynum.sun {
+  color: color-mix(in srgb, var(--danger) 70%, var(--text));
 }
-.cal-wd.sat {
-  color: var(--info);
+.cal-wd.sat,
+.cal-daynum.sat {
+  color: color-mix(in srgb, var(--info) 70%, var(--text));
 }
 .cal-days {
   display: grid;
@@ -671,7 +682,11 @@ button:disabled {
   overflow: hidden;
 }
 .cal-cell.dim {
-  opacity: 0.4;
+  /* 0.4 로 죽이면 이번 달이 아닌 날짜·일정은 어떤 테마에서도 못 읽는다(실측 1.9:1).
+     투명도로만 구분하는 대신 **칸 배경을 지워** 이번 달 밖이라는 게 구조로 보이게 하고,
+     글자는 읽히는 선까지만 흐리게 한다. */
+  opacity: 0.85;
+  background: transparent;
 }
 .cal-cell.today {
   border-color: var(--accent);
@@ -681,33 +696,35 @@ button:disabled {
   font-weight: 600;
   color: var(--text);
 }
-.cal-daynum.sun {
-  color: var(--danger);
-}
-.cal-daynum.sat {
-  color: var(--info);
-}
 .cal-evs {
   display: flex;
   flex-direction: column;
   gap: 2px;
   overflow: hidden;
 }
+/* 일정 칩. 색(`--ev`)은 Calendar.tsx 가 인라인 변수로 넘긴다.
+   ⚠️ 구글 캘린더가 주는 색은 **배경용 파스텔**(#e1e1e1 · #fbd75b …)이다. 그걸 글자색으로 쓰면
+   밝은 테마에서 흰 바탕에 흰 글자가 된다 — 실측 1.05:1 로 사실상 안 보였다.
+   그래서 색은 **배경 틴트 + 왼쪽 막대**로만 쓰고 글자는 항상 --text 로 둔다.
+   어떤 색이 오든(파스텔이든 진한 색이든) 모든 테마에서 읽힌다. */
 .cal-ev {
   font-size: 11px;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-left: 3px solid var(--ev);
+  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--ev) 22%, transparent);
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
 }
 .cal-ev:hover {
-  filter: brightness(1.25);
+  /* brightness() 는 밝은 테마에서 칩을 더 하얗게 만들어 역효과다 — 틴트를 진하게 한다 */
+  background: color-mix(in srgb, var(--ev) 42%, transparent);
 }
 .cal-ev-t {
-  font-weight: 600;
-  opacity: 0.85;
+  font-weight: 700;
 }
 .cal-more {
   font-size: 10px;
@@ -780,6 +797,8 @@ button:disabled {
   height: 10px;
   border-radius: 3px;
   flex-shrink: 0;
+  /* 구글 파스텔 색은 밝은 테마의 흰 카드 위에서 사라진다 — 얇은 윤곽을 준다 */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent);
 }
 .ev-modal-when {
   color: var(--accent);
@@ -812,6 +831,7 @@ button:disabled {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent);
 }
 .agenda-date {
   width: 84px;
@@ -854,12 +874,17 @@ button:disabled {
     width: 8px;
     height: 8px;
     padding: 0;
+    border: none;
     border-radius: 50%;
     /* 글자는 지우되 요소는 남긴다 (클릭 대상 유지) */
     font-size: 0;
     line-height: 0;
-    /* 배경색은 인라인 style 로 들어와 있어 여기서 못 덮는다 — 안쪽 그림자로 칠한다 */
-    box-shadow: inset 0 0 0 8px currentColor;
+    background: var(--ev);
+    /* 파스텔 점은 흰 바탕에서 사라진다 — 얇은 테두리로 윤곽을 준다 */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent);
+  }
+  .cal-ev:hover {
+    background: var(--ev);
   }
   .agenda-loc {
     display: none;
@@ -3441,14 +3466,21 @@ code {
   min-width: 0;
   overflow: hidden;
 }
-.tcal-cell.outside {
-  opacity: 0.32;
-}
 .tcal-cell.today {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 .tcal-cell.has {
-  background: color-mix(in srgb, var(--bg-elev) 82%, currentColor 18%);
+  /* currentColor 는 여기서 --text 로 풀려 색 구분이 전혀 없었다 — 세션 색으로 칠한다.
+     글자에 색을 넣지 않고 **칸**을 물들이는 방식이라 어떤 테마에서도 글자가 읽힌다. */
+  background: color-mix(in srgb, var(--bg-elev) 84%, var(--sess) 16%);
+  border-color: color-mix(in srgb, var(--sess) 40%, transparent);
+}
+.tcal-cell.outside {
+  /* 0.32 로 죽이면 밝은 테마에서 날짜·거리가 아예 안 보인다 (실측 1.3:1).
+     투명도로 죽이는 대신 **칸 배경과 테두리를 지운다** — 이번 달 밖이라는 게 구조로 보이고
+     글자는 제 색을 유지한다. */
+  background: transparent;
+  border-color: transparent;
 }
 .tcal-day {
   font-size: 11px;
@@ -3465,6 +3497,8 @@ code {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+  /* 세션 색은 칸 배경·테두리·앞의 점이 알려 준다. 숫자는 읽히는 게 먼저다. */
+  color: var(--text);
 }
 .tcal-acts {
   display: flex;
@@ -3482,13 +3516,24 @@ code {
   letter-spacing: 0.3px;
   text-align: left;
   cursor: pointer;
-  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 9.5px 글자를 세션 색으로 칠하면 밝은 테마에서 2~3:1 밖에 안 나온다.
+     색은 앞의 점이 맡고 글자는 --text 로 둔다 — 점이 오히려 색을 더 또렷하게 보여준다. */
+  color: var(--text);
+}
+.tcal-act::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--sess);
+  vertical-align: 1px;
 }
 .tcal-act:hover {
-  opacity: 1;
   text-decoration: underline;
 }
 .tcal-legend {
@@ -3849,8 +3894,7 @@ code {
   }
   /* 한 칸이 20~30px 뿐이라 "RECOVERY" 를 넣어도 "RE…" 만 남는다.
      색 막대로 바꾸면 세션 종류(색)와 개수가 그대로 읽히고 누르는 자리도 살아 있다.
-     종류 이름은 아래 범례에서 본다. 색은 이미 인라인 style 의 color 로 들어와 있어
-     currentColor 로 그대로 쓴다. */
+     종류 이름은 아래 범례에서 본다. */
   .tcal-acts {
     gap: 3px;
   }
@@ -3862,9 +3906,13 @@ code {
     font-size: 0;
     line-height: 0;
     border-radius: 2px;
-    background: currentColor;
+    background: var(--sess);
     background-clip: content-box;
     opacity: 1;
+  }
+  /* 막대 자체가 색이라 앞의 점은 필요 없다 */
+  .tcal-act::before {
+    display: none;
   }
   .tcal-act:hover {
     text-decoration: none;

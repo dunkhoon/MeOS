@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { km, type Activity } from '../../lib/exercise'
-import { alpha } from '../../lib/color'
 import { SESSION_COLOR, SESSION_LABEL, sessionKind, type SessionKind } from '../../lib/session'
 
 // 월간 훈련 캘린더 — 한 셀에 그날 훈련(거리 + 세션 종류)을 보여주고, 누르면 상세로 간다.
@@ -136,23 +135,23 @@ export function TrainingCalendar({ activities }: { activities: Activity[] }) {
             <div
               key={key}
               className={`tcal-cell ${outside ? 'outside' : ''} ${today ? 'today' : ''} ${list.length ? 'has' : ''}`}
-              style={list.length ? { borderColor: alpha(SESSION_COLOR[list[0].kind], 40) } : undefined}
+              // 세션 색은 변수로만 넘긴다 — 칠하는 방식은 index.css 가 정한다.
+              // ⚠️ 색을 글자색으로 쓰면 밝은 테마에서 안 읽힌다(실측 2.0:1). 배경 틴트·테두리·점으로 쓴다.
+              style={list.length ? ({ '--sess': SESSION_COLOR[list[0].kind] } as CSSProperties) : undefined}
             >
               <span className="tcal-day">{d.date()}</span>
               {list.length === 0 ? (
                 <span className="tcal-none">—</span>
               ) : (
                 <>
-                  <span className="tcal-km" style={{ color: SESSION_COLOR[list[0].kind] }}>
-                    {km(total).toFixed(1)}
-                  </span>
+                  <span className="tcal-km">{km(total).toFixed(1)}</span>
                   <div className="tcal-acts">
                     {list.map((e) => (
                       <button
                         key={e.activity.id}
                         type="button"
                         className="tcal-act"
-                        style={{ color: SESSION_COLOR[e.kind] }}
+                        style={{ '--sess': SESSION_COLOR[e.kind] } as CSSProperties}
                         title={`${e.activity.name ?? ''} · ${km(e.activity.distance_m ?? 0).toFixed(2)}km — 눌러서 상세 보기`}
                         onClick={() => navigate(`/activity/${e.activity.external_id}`)}
                       >

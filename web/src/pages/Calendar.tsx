@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
-import { alpha } from '../lib/color'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import dayjs from 'dayjs'
 import { fetchEvents, type CalEvent } from '../lib/calendar'
 
@@ -108,7 +107,9 @@ export default function Calendar() {
                     <div
                       key={e.id}
                       className="cal-ev"
-                      style={{ background: alpha(e.color ?? 'var(--accent)', 20), color: e.color ?? 'var(--accent)' }}
+                      // 색은 CSS 변수로만 넘긴다 — 칠하는 방식(배경 틴트·색 막대·점)은 index.css 가 정한다.
+                      // ⚠️ 구글이 주는 색은 원래 **배경용 파스텔**이라 글자색으로 쓰면 밝은 테마에서 안 보인다.
+                      style={{ '--ev': e.color ?? 'var(--accent)' } as CSSProperties}
                       title={`${fmtTime(e)} ${e.title}`}
                       onClick={() => setSelected(e)}
                     >
