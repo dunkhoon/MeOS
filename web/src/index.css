@@ -1700,6 +1700,12 @@ code {
   .card-actions {
     flex-shrink: 1;
   }
+  /* 제목은 flex-basis:0 + min-width:0 이라 0 까지 줄어든다. 그래서 조작부가 넓으면
+     줄바꿈이 걸리기 전에 제목이 먼저 찌그러져 글자가 한 자씩 세로로 쌓였다.
+     최소폭을 주면 한 줄에 못 담겨 .card-head 가 접히고, 제목이 자기 줄을 통째로 쓴다. */
+  .card-toggle {
+    min-width: 9rem;
+  }
 }
 .card-body {
   margin-top: 14px;
@@ -2915,7 +2921,9 @@ code {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1;
+  /* min-width:0 만 두면 옆 버튼들에 밀려 폭 13px 까지 찌부러진다 (글자가 세로로 쌓임).
+     최소폭을 주면 한 줄에 못 담겨 .trash-row 가 접히고 이름이 제 폭을 갖는다. */
+  flex: 1 1 11rem;
   min-width: 0;
   font-size: 13px;
 }
