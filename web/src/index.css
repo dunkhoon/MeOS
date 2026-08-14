@@ -269,6 +269,38 @@ textarea {
   font-family: inherit;
 }
 
+/* 손가락으로 쓰는 기기에서는 작은 버튼들이 너무 얇다 (22~27px).
+   마우스 화면은 그대로 두고 터치에서만 키운다. */
+@media (pointer: coarse) {
+  .ghost-btn,
+  .link-btn,
+  .tf-btn,
+  .vf-btn,
+  .seg-btn,
+  .pb-play,
+  .card-toggle {
+    min-height: 36px;
+  }
+  /* 화살표처럼 글자가 한 자뿐인 버튼은 높이만 키우면 여전히 가늘다 */
+  .ghost-btn,
+  .tcal-arrow {
+    min-width: 36px;
+  }
+  .link-btn {
+    padding: 4px 8px;
+  }
+  /* 접이식 카드 제목줄 — 글자만이 아니라 줄 전체가 눌리게 */
+  .card-toggle {
+    align-items: center;
+  }
+  /* Leaflet 기본 확대 버튼도 30px 라 손가락엔 작다 */
+  .ad-map-box .leaflet-bar a {
+    width: 36px;
+    height: 36px;
+    line-height: 36px;
+  }
+}
+
 .muted {
   color: var(--muted);
 }
@@ -580,6 +612,11 @@ button:disabled {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  /* 제목이 두 줄로 흐르면 월 이동 버튼이 눌려 찌그러진다 — 좁으면 아래 줄로 내린다 */
+  flex-wrap: wrap;
+}
+.cal-nav {
+  flex: none;
 }
 .cal-nav {
   display: flex;
@@ -800,9 +837,25 @@ button:disabled {
   .cal-cell {
     min-height: 62px;
   }
+  /* 한 칸이 45px 밖에 안 되는 화면에서 제목을 넣어 봐야 "[26…" 만 남아 아무 정보가 없다.
+     색 점으로 바꾸면 "몇 건, 어느 캘린더" 가 그대로 읽히고 누르는 자리도 그대로다.
+     제목은 칸을 눌러 뜨는 그날 일정 목록과 아래 아젠다에서 본다. */
+  .cal-evs {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding-top: 2px;
+  }
   .cal-ev {
-    font-size: 10px;
-    padding: 1px 3px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border-radius: 50%;
+    /* 글자는 지우되 요소는 남긴다 (클릭 대상 유지) */
+    font-size: 0;
+    line-height: 0;
+    /* 배경색은 인라인 style 로 들어와 있어 여기서 못 덮는다 — 안쪽 그림자로 칠한다 */
+    box-shadow: inset 0 0 0 8px currentColor;
   }
   .agenda-loc {
     display: none;
@@ -1375,6 +1428,10 @@ button:disabled {
   border-radius: var(--radius);
   padding: 20px;
   min-height: 120px;
+  /* 그리드·플렉스 안에서 카드는 기본적으로 "내용 최소폭" 아래로 안 줄어든다.
+     안에 줄바꿈 안 되는 버튼줄이 있으면 카드가 칸보다 넓어져 화면 밖으로 밀린다.
+     카드가 컨테이너를 넓히는 일은 없어야 한다. */
+  min-width: 0;
 }
 /* 접으면 본문이 사라지는데 min-height 가 남아 빈 공간이 생겼다.
    제목줄만 남는 얇은 바가 되도록 높이 제한을 풀고 위아래 여백도 줄인다. */
@@ -1578,6 +1635,8 @@ code {
 .card-title {
   margin: 0;
   font-size: 15px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* 접이식 카드 헤더 */
@@ -1586,6 +1645,8 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  /* 좁은 화면에서 조작 버튼이 제목을 밀어내지 않고 아랫줄로 내려가게 */
+  flex-wrap: wrap;
 }
 .card-toggle {
   display: flex;
@@ -1613,8 +1674,16 @@ code {
 .card-toggle:hover .card-title {
   color: var(--accent);
 }
+/* 넓은 화면에서는 제목에 밀려 찌그러지지 않게 버티고,
+   자기 줄로 내려간 뒤에는 줄어들 수 있어야 안쪽 버튼들이 접힌다.
+   flex-shrink:0 으로 고정하면 좁은 화면에서 카드 밖으로 나간다. */
 .card-actions {
   flex-shrink: 0;
+}
+@media (max-width: 768px) {
+  .card-actions {
+    flex-shrink: 1;
+  }
 }
 .card-body {
   margin-top: 14px;
@@ -1678,6 +1747,8 @@ code {
   padding: 5px 10px;
   font-size: 12px;
   font-weight: 500;
+  /* 좁은 화면에서 "오늘" 이 "오/늘" 로 쪼개지던 것 — 버튼 글자는 줄바꿈하지 않는다 */
+  white-space: nowrap;
 }
 .ghost-btn:hover {
   color: var(--text);
@@ -1739,6 +1810,8 @@ code {
   border-radius: 8px;
   padding: 2px;
   gap: 2px;
+  /* 좁은 화면에서 이 묶음이 안 줄어들면 카드째 밖으로 밀린다 */
+  flex-wrap: wrap;
 }
 .seg-btn {
   background: transparent;
@@ -1994,6 +2067,8 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 /* 공통 칩 */
@@ -2458,8 +2533,9 @@ code {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 18px;
+  gap: 8px 18px;
   padding-top: 4px;
+  flex-wrap: wrap;
 }
 .fit-lg-item {
   display: inline-flex;
@@ -2912,6 +2988,7 @@ code {
   font-size: 11px;
   color: var(--muted);
   padding-bottom: 2px;
+  min-width: 0;
 }
 .tcal-cell {
   min-height: 74px;
@@ -2922,6 +2999,11 @@ code {
   flex-direction: column;
   gap: 2px;
   background: var(--bg-elev);
+  /* 그리드 칸의 기본 min-width 는 auto(=내용 최소폭)다. 안에 nowrap 글자("RECOVERY")가 있으면
+     칸이 그 아래로 못 줄어들어 7열 그리드가 카드보다 넓어진다 — 좁은 화면에서 표가 삐져나온 원인.
+     0 으로 풀어야 1fr 이 실제로 균등 분할된다. */
+  min-width: 0;
+  overflow: hidden;
 }
 .tcal-cell.outside {
   opacity: 0.32;
