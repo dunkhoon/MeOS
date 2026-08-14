@@ -76,6 +76,10 @@ export function FitnessPanel({ wellness }: { wellness: Wellness[] }) {
  * 차트 아래 범례. Recharts 기본 <Legend> 대신 직접 그려서, 각 항목에 마우스를 올리면
  * 그 수치가 무슨 뜻인지 설명을 띄운다. (터치 기기에서는 탭으로 토글)
  */
+/** 툴팁 최대 폭과 화면 가장자리 여백 — CSS 의 .metric-tip 과 같은 값을 써야 한다 */
+const TIP_MAX = 300
+const TIP_EDGE = 12
+
 function MetricLegend() {
   const [tip, setTip] = useState<{ metric: Metric; x: number; y: number; below: boolean } | null>(null)
 
@@ -83,7 +87,12 @@ function MetricLegend() {
     const r = el.getBoundingClientRect()
     // 위쪽 공간이 모자라면 아래로 내려서 잘리지 않게
     const below = r.top < 170
-    setTip({ metric, x: r.left + r.width / 2, y: below ? r.bottom : r.top, below })
+    // 툴팁은 항목 가운데에 붙지만(translateX(-50%)) 화면 끝 항목에서는 그대로 밖으로 나간다.
+    // 최대 폭 기준으로 좌우 여백을 확보하도록 중심을 화면 안쪽으로 당긴다.
+    const half = Math.min(TIP_MAX, window.innerWidth - TIP_EDGE * 2) / 2
+    const center = r.left + r.width / 2
+    const x = Math.min(Math.max(center, TIP_EDGE + half), window.innerWidth - TIP_EDGE - half)
+    setTip({ metric, x, y: below ? r.bottom : r.top, below })
   }
 
   return (

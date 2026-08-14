@@ -2594,7 +2594,9 @@ code {
   position: fixed;
   z-index: 200;
   width: max-content;
-  max-width: 300px;
+  /* 300px 은 FitnessPanel 의 TIP_MAX 와 같아야 한다 — 위치 계산이 이 값을 기준으로 한다.
+     좁은 화면에서는 화면 폭에서 좌우 여백(12px)을 뺀 만큼으로 줄어든다. */
+  max-width: min(300px, calc(100vw - 24px));
   transform: translate(-50%, -100%);
   margin-top: -9px;
   background: var(--bg-card);

@@ -161,6 +161,9 @@ npx deno@2 check supabase/functions/sync/index.ts
   - 훈련 캘린더의 세션 라벨 → **색 막대** (보이는 건 4px, 손가락이 닿는 자리는 14px —
     `height: 14px; padding: 5px 0; background-clip: content-box`). 종류 이름은 아래 범례에서 본다.
 - 터치 기기(`@media (pointer: coarse)`)에서는 작은 버튼들을 최소 36px 로 키운다. 마우스 화면은 그대로.
+- **직접 띄우는 툴팁은 화면 안으로 당겨야 한다.** Fitness 범례 설명(`.metric-tip`)은 항목 가운데에
+  `translateX(-50%)` 로 붙는데, 가장자리 항목에서는 그대로 화면 밖으로 나갔다. 최대 폭 기준으로
+  중심을 clamp 한다 (`FitnessPanel.tsx` 의 `TIP_MAX`/`TIP_EDGE` 는 CSS `max-width` 와 같은 값).
 
 ⚠️ **모달 덮개를 `display: grid; place-items: center` 로 만들면 암묵 트랙이 내용 *최대폭*으로 부푼다.**
 그러면 안쪽의 `max-width: 100%` 가 화면이 아니라 그 부푼 트랙 기준이 되어 모달이 화면 밖으로 나간다
