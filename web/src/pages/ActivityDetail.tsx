@@ -42,7 +42,7 @@ const PLAY_SECONDS = 30
 const TICK_MS = 60
 import { SESSION_COLOR, SESSION_KINDS, SESSION_LABEL, isManualKind, sessionKind, type SessionKind } from '../lib/session'
 import { analyzeSession, type Finding } from '../lib/nsm'
-import { alpha } from '../lib/color'
+import { alpha, ink } from '../lib/color'
 
 // 훈련 상세 — 캘린더/최근활동에서 넘어온다. 요약 + 랩 분석 + 데이터 추이.
 
@@ -334,7 +334,7 @@ export default function ActivityDetail() {
         <>
           <div className="ad-top">
             <div className="card ad-kind" style={{ borderColor: alpha(SESSION_COLOR[kind], 50) }}>
-              <div className="ad-kind-name" style={{ color: SESSION_COLOR[kind] }}>
+              <div className="ad-kind-name" style={{ color: ink(SESSION_COLOR[kind]) }}>
                 {SESSION_LABEL[kind] || act.type || '활동'}
               </div>
               <div className="muted small">세션 종류 {manual ? '(직접 지정)' : '(이름에서 추정)'}</div>
@@ -366,7 +366,7 @@ export default function ActivityDetail() {
                   key={k}
                   type="button"
                   className={`tf-btn ${kind === k ? 'active' : ''}`}
-                  style={kind === k ? { borderColor: SESSION_COLOR[k], color: SESSION_COLOR[k] } : undefined}
+                  style={kind === k ? { borderColor: SESSION_COLOR[k], color: ink(SESSION_COLOR[k]) } : undefined}
                   disabled={savingKind}
                   onClick={() => void saveKind(k)}
                 >
@@ -565,7 +565,7 @@ export default function ActivityDetail() {
                 {cursor != null && cursorValue != null && (
                   <>
                     {' · 지금 '}
-                    <b style={{ color: meta.color }}>{meta.fmt(cursorValue)}</b>
+                    <b style={{ color: ink(meta.color) }}>{meta.fmt(cursorValue)}</b>
                   </>
                 )}
               </p>

@@ -26,7 +26,7 @@ import { DistanceChart } from '../components/exercise/DistanceChart'
 import { FitnessPanel } from '../components/exercise/FitnessPanel'
 import { ConditionPanel } from '../components/exercise/ConditionPanel'
 import { CollapsibleCard } from '../components/CollapsibleCard'
-import { alpha } from '../lib/color'
+import { alpha, ink } from '../lib/color'
 
 const TYPES_STORAGE_KEY = 'pp:ex:types'
 
@@ -403,7 +403,7 @@ function RecentActivities({ activities }: { activities: Activity[] }) {
                 <td className="act-caret">{open ? '▾' : '▸'}</td>
                 <td>{a.start_date_local ? dayjs(a.start_date_local).format('MM-DD') : '-'}</td>
                 <td>
-                  <span className="pill" style={{ background: alpha(typeColor(a.type), 20), color: typeColor(a.type) }}>
+                  <span className="pill" style={{ background: alpha(typeColor(a.type), 12), color: ink(typeColor(a.type)) }}>
                     {a.type ?? '-'}
                   </span>
                 </td>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { fitnessSeries, type Wellness } from '../../lib/exercise'
 import { CollapsibleCard } from '../CollapsibleCard'
+import { ink } from '../../lib/color'
 
 type MetricKey = 'fitness' | 'fatigue' | 'form'
 
@@ -116,7 +117,7 @@ function MetricLegend() {
 
       {tip && (
         <div className={`metric-tip ${tip.below ? 'below' : ''}`} style={{ left: tip.x, top: tip.y }} role="tooltip">
-          <b style={{ color: tip.metric.color }}>{tip.metric.label}</b>
+          <b style={{ color: ink(tip.metric.color) }}>{tip.metric.label}</b>
           <p>{tip.metric.help}</p>
         </div>
       )}

@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { fetchShoeActivities, fetchShoes, isRetired, shoeLabel, type Shoe } from '../../lib/shoes'
 import { km, paceStr, typeColor, type Activity } from '../../lib/exercise'
-import { alpha } from '../../lib/color'
+import { alpha, ink } from '../../lib/color'
 
 // 러닝화 — Garmin 장비 정보 (reference/shoes.png 참고).
 // 목록에서 누르면 그 신발로 뛴 활동을 보여준다.
@@ -221,7 +221,7 @@ function ShoeModal({ shoe, onClose }: { shoe: Shoe; onClose: () => void }) {
                 title="훈련 상세 보기"
               >
                 <span className="shoe-act-date">{dayjs(a.start_date_local ?? undefined).format('YYYY-MM-DD')}</span>
-                <span className="pill" style={{ background: alpha(typeColor(a.type), 20), color: typeColor(a.type) }}>
+                <span className="pill" style={{ background: alpha(typeColor(a.type), 12), color: ink(typeColor(a.type)) }}>
                   {a.type ?? '-'}
                 </span>
                 <span className="shoe-act-name">{a.name || '(제목 없음)'}</span>

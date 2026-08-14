@@ -20,15 +20,61 @@
   --font-ui: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
   --radius: 12px;
 
-  /* 아래 팔레트에서 파생되는 값들 — 팔레트만 갈아 끼우면 전부 따라온다.
-     custom property 는 쓰는 시점에 풀리므로 여기서 var() 로 엮어도 테마별 값이 들어간다. */
-  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
-  --ok: var(--h-green);
-  --warn: var(--h-yellow);
-  --danger: var(--h-red);
-  --info: var(--h-blue);
+}
+
+/* 아래 팔레트에서 파생되는 값들 — 팔레트만 갈아 끼우면 전부 따라온다.
+   custom property 는 쓰는 시점에 풀리므로 여기서 var() 로 엮어도 테마별 값이 들어간다.
+   `[data-swatch]` 까지 거는 이유: 설정 화면 미리보기 조각도 자기 팔레트로 다시 계산돼야 한다
+   (`:root` 에만 두면 조각들이 현재 테마의 값을 물려받아 전부 같은 색이 된다). */
+:root,
+[data-swatch] {
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
   --grid: var(--border);
   --tooltip-bg: var(--bg-elev);
+
+  /* ── 색을 **글자**에 쓸 때 (ink) ───────────────────────────
+   *
+   * `--h-*` 는 **칠하는 색**이다 — 차트 선, 점, 막대, 배경 틴트.
+   * 그걸 그대로 글자에 얹으면 밝은 테마에서 안 읽힌다 (실측 최악 2.15:1).
+   * 반대로 Nord·Gruvbox 처럼 파스텔이 진한 어두운 테마에서는 2.46:1 까지 떨어진다.
+   *
+   * 그래서 글자용으로는 **OKLCH 의 밝기(L)만** 테마별 한계(--ink-lo/--ink-hi)로 조인다.
+   * 색상(h)·채도(c)는 건드리지 않으므로 "빨강은 빨강" 그대로다.
+   * 한계값은 각 테마 팔레트 8색이 표면 3종(bg/bg-elev/bg-card) 위에서 모두 4.5:1 을
+   * 넘는 최소치를 계산해 넣었다. 팔레트를 고치면 다시 계산해야 한다.
+   *
+   * 아래 기본값은 상대색 문법을 못 쓰는 브라우저용 폴백(= 팔레트 색 그대로)이다. */
+  --ink-red: var(--h-red);
+  --ink-orange: var(--h-orange);
+  --ink-yellow: var(--h-yellow);
+  --ink-green: var(--h-green);
+  --ink-cyan: var(--h-cyan);
+  --ink-blue: var(--h-blue);
+  --ink-purple: var(--h-purple);
+  --ink-pink: var(--h-pink);
+  --ink-accent: var(--accent);
+
+  /* 의미 토큰은 전부 글자·아이콘·테두리에 쓰이므로 ink 쪽에 엮는다.
+     칠할 때는 --h-* 를 직접 쓴다. */
+  --ok: var(--ink-green);
+  --warn: var(--ink-yellow);
+  --danger: var(--ink-red);
+  --info: var(--ink-blue);
+}
+
+@supports (color: oklch(from red clamp(0, l, 1) c h)) {
+  :root,
+  [data-swatch] {
+    --ink-red: oklch(from var(--h-red) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-orange: oklch(from var(--h-orange) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-yellow: oklch(from var(--h-yellow) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-green: oklch(from var(--h-green) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-cyan: oklch(from var(--h-cyan) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-blue: oklch(from var(--h-blue) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-purple: oklch(from var(--h-purple) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-pink: oklch(from var(--h-pink) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+    --ink-accent: oklch(from var(--accent) clamp(var(--ink-lo, 0), l, var(--ink-hi, 1)) c h);
+  }
 }
 
 /* ── 테마 팔레트 ─────────────────────────────────────────────
@@ -49,7 +95,7 @@
   --bg-card: #1b1e27;
   --border: #262a35;
   --text: #e6e8ee;
-  --muted: #8b90a0;
+  --muted: #969ba9;
   --accent: #ff6b35;
   --on-accent: #12141a;
   --h-red: #f85149;
@@ -60,6 +106,10 @@
   --h-blue: #4a9eff;
   --h-purple: #a371f7;
   --h-pink: #ff6b9d;
+
+  /* 색을 글자로 쓸 때 이보다 어두우면 끌어올린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0.69;
+  --ink-hi: 1;
 }
 
 :root[data-theme='catppuccin-mocha'],
@@ -69,7 +119,8 @@
   --bg-card: #1e1e2e;
   --border: #313244;
   --text: #cdd6f4;
-  --muted: #7f849c;
+  /* overlay1 은 오버레이·테두리용 — 글자용 subtext0 로 (3.4 → 5.6) */
+  --muted: #a6adc8;
   --accent: #cba6f7;
   --on-accent: #1e1e2e;
   --h-red: #f38ba8;
@@ -80,6 +131,10 @@
   --h-blue: #89b4fa;
   --h-purple: #cba6f7;
   --h-pink: #f5c2e7;
+
+  /* 색을 글자로 쓸 때 이보다 어두우면 끌어올린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0;
+  --ink-hi: 1;
 }
 
 :root[data-theme='dracula'],
@@ -89,7 +144,8 @@
   --bg-card: #282a36;
   --border: #44475a;
   --text: #f8f8f2;
-  --muted: #6272a4;
+  /* 공식 Comment(#6272a4)는 어떤 표면에서도 3.0:1 이라 밝기만 올렸다 (3.0 → 4.6) */
+  --muted: #a8b1c9;
   --accent: #bd93f9;
   --on-accent: #282a36;
   --h-red: #ff5555;
@@ -100,6 +156,10 @@
   --h-blue: #8be9fd;
   --h-purple: #bd93f9;
   --h-pink: #ff79c6;
+
+  /* 색을 글자로 쓸 때 이보다 어두우면 끌어올린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0.77;
+  --ink-hi: 1;
 }
 
 :root[data-theme='tokyo-night'],
@@ -109,7 +169,8 @@
   --bg-card: #1f2335;
   --border: #292e42;
   --text: #c0caf5;
-  --muted: #737aa2;
+  /* dark5 → 공식 fg_dark 로 (3.7 → 6.4) */
+  --muted: #9aa5ce;
   --accent: #7aa2f7;
   --on-accent: #16161e;
   --h-red: #f7768e;
@@ -120,6 +181,10 @@
   --h-blue: #7aa2f7;
   --h-purple: #bb9af7;
   --h-pink: #ff007c;
+
+  /* 색을 글자로 쓸 때 이보다 어두우면 끌어올린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0.75;
+  --ink-hi: 1;
 }
 
 :root[data-theme='nord'],
@@ -129,7 +194,8 @@
   --bg-card: #3b4252;
   --border: #4c566a;
   --text: #eceff4;
-  --muted: #8b98b0;
+  /* Nord 는 중간 회색 swatch 가 없어 밝기만 올렸다 (3.5 → 4.6) */
+  --muted: #c1c8d6;
   --accent: #88c0d0;
   --on-accent: #2e3440;
   --h-red: #bf616a;
@@ -140,6 +206,10 @@
   --h-blue: #81a1c1;
   --h-purple: #b48ead;
   --h-pink: #d18ec2;
+
+  /* 색을 글자로 쓸 때 이보다 어두우면 끌어올린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0.82;
+  --ink-hi: 1;
 }
 
 :root[data-theme='gruvbox'],
@@ -149,7 +219,7 @@
   --bg-card: #32302f;
   --border: #504945;
   --text: #ebdbb2;
-  --muted: #a89984;
+  --muted: #bdae93;
   --accent: #fe8019;
   --on-accent: #1d2021;
   --h-red: #fb4934;
@@ -160,6 +230,10 @@
   --h-blue: #83a598;
   --h-purple: #d3869b;
   --h-pink: #b16286;
+
+  /* 색을 글자로 쓸 때 이보다 어두우면 끌어올린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0.81;
+  --ink-hi: 1;
 }
 
 :root[data-theme='one-dark'],
@@ -169,7 +243,8 @@
   --bg-card: #2c313a;
   --border: #3e4451;
   --text: #abb2bf;
-  --muted: #7f8797;
+  /* comment 와 fg 사이 (3.6 → 4.6) */
+  --muted: #a9b0bd;
   --accent: #61afef;
   --on-accent: #21252b;
   --h-red: #e06c75;
@@ -180,6 +255,10 @@
   --h-blue: #61afef;
   --h-purple: #c678dd;
   --h-pink: #d55fde;
+
+  /* 색을 글자로 쓸 때 이보다 어두우면 끌어올린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0.8;
+  --ink-hi: 1;
 }
 
 /* ── 밝은 테마 ── */
@@ -192,7 +271,7 @@
   --text: #4c4f69;
   /* overlay2(#7c7f93)는 Catppuccin 에서 **오버레이/테두리용** 이라 본문 옆 보조글자로 쓰면
      밝은 판에서 3.5:1 밖에 안 나온다. 글자용 swatch 인 subtext1 로 바꾼다 (5.5:1). */
-  --muted: #5c5f77;
+  --muted: #565972;
   --accent: #8839ef;
   --on-accent: #ffffff;
   --h-red: #d20f39;
@@ -203,6 +282,10 @@
   --h-blue: #1e66f5;
   --h-purple: #8839ef;
   --h-pink: #ea76cb;
+
+  /* 색을 글자로 쓸 때 이보다 밝으면 끌어내린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0;
+  --ink-hi: 0.44;
 }
 
 :root[data-theme='github-light'],
@@ -212,7 +295,8 @@
   --bg-card: #ffffff;
   --border: #d0d7de;
   --text: #1f2328;
-  --muted: #656d76;
+  /* Primer 의 현재 fg.muted (4.50 → 5.2) */
+  --muted: #565f6a;
   --accent: #0969da;
   --on-accent: #ffffff;
   --h-red: #cf222e;
@@ -223,6 +307,10 @@
   --h-blue: #0969da;
   --h-purple: #8250df;
   --h-pink: #bf3989;
+
+  /* 색을 글자로 쓸 때 이보다 밝으면 끌어내린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0;
+  --ink-hi: 0.44;
 }
 
 :root[data-theme='solarized-light'],
@@ -232,9 +320,8 @@
   --bg-card: #fdf6e3;
   --border: #ddd6c1;
   --text: #073642;
-  /* base00(#657b83)은 Solarized 밝은 판의 **본문색**이다. 본문을 그보다 진한 base02 로 쓰는
-     이 앱에서는 보조글자로 너무 옅어 3.6:1 → 강조 글자색 base01 로 (4.7:1). */
-  --muted: #586e75;
+  /* base01 보다 한 단계 진하게 (4.39 → 4.6) */
+  --muted: #446068;
   --accent: #268bd2;
   --on-accent: #fdf6e3;
   --h-red: #dc322f;
@@ -245,6 +332,10 @@
   --h-blue: #268bd2;
   --h-purple: #6c71c4;
   --h-pink: #d33682;
+
+  /* 색을 글자로 쓸 때 이보다 밝으면 끌어내린다 (--ink-*). lo·hi 를 **둘 다** 적는다 — 하나만 적으면 위 테마 값이 남아 clamp 이 뒤집힌다 */
+  --ink-lo: 0;
+  --ink-hi: 0.44;
 }
 
 * {
@@ -432,7 +523,7 @@ input[type='password']:focus {
   border-color: var(--accent);
 }
 button {
-  background: var(--accent);
+  background: var(--ink-accent);
   color: var(--on-accent);
   border: none;
   border-radius: 8px;
@@ -441,8 +532,10 @@ button {
   font-weight: 600;
   cursor: pointer;
 }
+/* 비활성 컨트롤은 WCAG 명암비 대상이 아니지만, 0.6 이면 글자를 아예 못 읽는다(1.75:1).
+   "눌리지 않는다" 는 건 보이되 무슨 버튼인지는 읽히는 선. */
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.78;
   cursor: default;
 }
 .notice {
@@ -499,9 +592,8 @@ button:disabled {
 }
 .nav-item.active {
   background: var(--accent-soft);
-  /* 액센트 원색은 밝은 테마에서 14px 글자로 얇다 (Solarized 3.2:1).
-     --text 쪽으로 조금 섞어 테마와 무관하게 읽히게 한다. */
-  color: color-mix(in srgb, var(--accent) 72%, var(--text));
+  /* 액센트 원색은 밝은 테마에서 14px 글자로 얇다 (Solarized 3.2:1) — ink 를 쓴다 */
+  color: var(--ink-accent);
 }
 .nav-icon {
   width: 18px;
@@ -600,7 +692,7 @@ button:disabled {
 }
 .dock-add:hover {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .dock-toast {
   position: fixed;
@@ -653,16 +745,14 @@ button:disabled {
   color: var(--muted);
   padding: 6px 0;
 }
-/* 일=빨강 · 토=파랑. 팔레트 원색 그대로 쓰면 밝은 테마의 12px 글자로는 얇다
-   (Solarized 의 파랑은 3.2:1). --text 쪽으로 조금 섞으면 밝은 테마에선 진해지고
-   어두운 테마에선 밝아져, 테마를 가리지 않고 읽힌다. */
+/* 일=빨강 · 토=파랑. --danger/--info 는 ink 에 엮여 있어 어떤 테마에서도 읽힌다 */
 .cal-wd.sun,
 .cal-daynum.sun {
-  color: color-mix(in srgb, var(--danger) 70%, var(--text));
+  color: var(--danger);
 }
 .cal-wd.sat,
 .cal-daynum.sat {
-  color: color-mix(in srgb, var(--info) 70%, var(--text));
+  color: var(--info);
 }
 .cal-days {
   display: grid;
@@ -682,10 +772,8 @@ button:disabled {
   overflow: hidden;
 }
 .cal-cell.dim {
-  /* 0.4 로 죽이면 이번 달이 아닌 날짜·일정은 어떤 테마에서도 못 읽는다(실측 1.9:1).
-     투명도로만 구분하는 대신 **칸 배경을 지워** 이번 달 밖이라는 게 구조로 보이게 하고,
-     글자는 읽히는 선까지만 흐리게 한다. */
-  opacity: 0.85;
+  /* 0.4 로 죽이면 어떤 테마에서도 못 읽는다(실측 1.9:1). 투명도로 죽이는 대신
+     칸 배경을 지워 "이번 달 밖" 을 구조로 보여주고 글자는 제 색을 유지한다. */
   background: transparent;
 }
 .cal-cell.today {
@@ -712,7 +800,7 @@ button:disabled {
   padding: 1px 5px;
   border-left: 3px solid var(--ev);
   border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--ev) 22%, transparent);
+  background: color-mix(in srgb, var(--ev) 10%, transparent);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -721,7 +809,7 @@ button:disabled {
 }
 .cal-ev:hover {
   /* brightness() 는 밝은 테마에서 칩을 더 하얗게 만들어 역효과다 — 틴트를 진하게 한다 */
-  background: color-mix(in srgb, var(--ev) 42%, transparent);
+  background: color-mix(in srgb, var(--ev) 24%, transparent);
 }
 .cal-ev-t {
   font-weight: 700;
@@ -733,7 +821,7 @@ button:disabled {
   cursor: pointer;
 }
 .cal-more:hover {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .cal-daynum {
   cursor: pointer;
@@ -801,7 +889,7 @@ button:disabled {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent);
 }
 .ev-modal-when {
-  color: var(--accent);
+  color: var(--ink-accent);
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -964,7 +1052,7 @@ button:disabled {
   white-space: nowrap;
 }
 .qs-item.active .qs-label {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .qs-hint {
   font-size: 11px;
@@ -978,7 +1066,7 @@ button:disabled {
   padding: 10px 20px;
   border-top: 1px solid var(--border);
   font-size: 13px;
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 
 /* 설정 페이지 */
@@ -1030,7 +1118,7 @@ button:disabled {
   margin-left: 6px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 
 /* 미리보기 — 안쪽에서 --bg 등이 그 테마 값으로 바뀌므로 색을 따로 안 적어도 된다 */
@@ -1116,7 +1204,7 @@ button:disabled {
 }
 .ghost-btn.recording {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .snippet-list {
   display: flex;
@@ -1153,7 +1241,7 @@ button:disabled {
   border-radius: 6px;
 }
 .icon-btn:hover {
-  color: var(--accent);
+  color: var(--ink-accent);
   background: var(--bg-card);
 }
 .snippet-form {
@@ -1200,7 +1288,7 @@ button:disabled {
 }
 .sc-add-inline:hover {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 
 /* 컨텍스트 메뉴 (우클릭: 수정/삭제) */
@@ -1407,7 +1495,7 @@ button:disabled {
 }
 .sync-btn:hover:not(:disabled) {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .sync-btn:disabled {
   opacity: 0.85;
@@ -1425,10 +1513,11 @@ button:disabled {
   white-space: nowrap;
 }
 .sync-actions .link-btn.small:hover:not(:disabled) {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .sync-actions .link-btn.small:disabled {
-  opacity: 0.5;
+  /* button:disabled 의 0.78 과 겹쳐 곱해지므로 여기서 더 낮추지 않는다 */
+  opacity: 1;
   cursor: default;
 }
 .spinner {
@@ -1487,7 +1576,7 @@ button:disabled {
 }
 .soon {
   font-size: 11px;
-  color: var(--accent);
+  color: var(--ink-accent);
   border: 1px solid var(--accent-soft);
   border-radius: 4px;
   padding: 2px 6px;
@@ -1603,11 +1692,11 @@ code {
   white-space: nowrap;
 }
 .race-dday.grade-a {
-  background: rgba(255, 107, 53, 0.18);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink-accent);
 }
 .race-dday.grade-b {
-  background: rgba(63, 176, 255, 0.18);
+  background: color-mix(in srgb, var(--h-blue) 12%, transparent);
   color: var(--info);
 }
 .race-dday.grade-c {
@@ -1713,7 +1802,7 @@ code {
   transform: rotate(-90deg);
 }
 .card-toggle:hover .card-title {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 /* 넓은 화면에서는 제목에 밀려 찌그러지지 않게 버티고,
    자기 줄로 내려간 뒤에는 줄어들 수 있어야 안쪽 버튼들이 접힌다.
@@ -1768,7 +1857,7 @@ code {
 }
 .tf-all.active {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .tf-btn:not(.active) .tf-dot {
   opacity: 0.35;
@@ -1874,7 +1963,7 @@ code {
   color: var(--text);
 }
 .seg-btn.active {
-  background: var(--accent);
+  background: var(--ink-accent);
   color: var(--on-accent);
 }
 
@@ -1935,7 +2024,7 @@ code {
 }
 .pill {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--ink-accent);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 12px;
@@ -1976,7 +2065,7 @@ code {
   display: inline-block;
   margin-top: 10px;
   font-size: 12px;
-  color: var(--accent);
+  color: var(--ink-accent);
   text-decoration: none;
 }
 .ext-link:hover {
@@ -2132,34 +2221,34 @@ code {
   flex-shrink: 0;
 }
 .chip.st-wait {
-  background: rgba(63, 176, 255, 0.15);
+  background: color-mix(in srgb, var(--h-blue) 12%, transparent);
   color: var(--info);
-  border-color: rgba(63, 176, 255, 0.35);
+  border-color: color-mix(in srgb, var(--h-blue) 35%, transparent);
 }
 .chip.st-doing {
-  background: rgba(250, 204, 21, 0.15);
+  background: color-mix(in srgb, var(--h-yellow) 12%, transparent);
   color: var(--warn);
-  border-color: rgba(250, 204, 21, 0.35);
+  border-color: color-mix(in srgb, var(--h-yellow) 35%, transparent);
 }
 .chip.st-done {
-  background: rgba(63, 185, 80, 0.15);
+  background: color-mix(in srgb, var(--h-green) 12%, transparent);
   color: var(--ok);
-  border-color: rgba(63, 185, 80, 0.35);
+  border-color: color-mix(in srgb, var(--h-green) 35%, transparent);
 }
 .chip.sys-redmine {
-  background: rgba(255, 107, 157, 0.15);
-  color: var(--h-pink);
-  border-color: rgba(255, 107, 157, 0.35);
+  background: color-mix(in srgb, var(--h-pink) 12%, transparent);
+  color: var(--ink-pink);
+  border-color: color-mix(in srgb, var(--h-pink) 35%, transparent);
 }
 .chip.sys-jira {
-  background: rgba(63, 176, 255, 0.15);
+  background: color-mix(in srgb, var(--h-blue) 12%, transparent);
   color: var(--info);
-  border-color: rgba(63, 176, 255, 0.35);
+  border-color: color-mix(in srgb, var(--h-blue) 35%, transparent);
 }
 .chip.trk {
-  background: rgba(167, 139, 250, 0.15);
-  color: var(--h-purple);
-  border-color: rgba(167, 139, 250, 0.35);
+  background: color-mix(in srgb, var(--h-purple) 12%, transparent);
+  color: var(--ink-purple);
+  border-color: color-mix(in srgb, var(--h-purple) 35%, transparent);
 }
 .chip.ver,
 .chip.kind {
@@ -2168,14 +2257,14 @@ code {
   border-color: var(--border);
 }
 .chip.ver.build {
-  background: rgba(63, 176, 255, 0.12);
+  background: color-mix(in srgb, var(--h-blue) 12%, transparent);
   color: var(--info);
-  border-color: rgba(63, 176, 255, 0.3);
+  border-color: color-mix(in srgb, var(--h-blue) 30%, transparent);
 }
 .chip.bad {
-  background: rgba(255, 107, 107, 0.15);
+  background: color-mix(in srgb, var(--h-red) 12%, transparent);
   color: var(--danger);
-  border-color: rgba(255, 107, 107, 0.35);
+  border-color: color-mix(in srgb, var(--h-red) 35%, transparent);
 }
 /* 눌러서 다음 단계로 넘기는 상태 칩 (대기 → 진행 → 완료) */
 .chip-btn {
@@ -2238,7 +2327,6 @@ code {
 .wp-row.empty:hover {
   cursor: default;
   background: none;
-  opacity: 0.75;
 }
 .wp-id,
 .bts-id {
@@ -2298,7 +2386,7 @@ code {
   cursor: pointer;
 }
 .row-icon:hover {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .row-x,
 .edit-btn {
@@ -2314,7 +2402,7 @@ code {
 }
 .row-x:hover {
   color: var(--danger);
-  background: rgba(255, 107, 107, 0.12);
+  background: color-mix(in srgb, var(--h-red) 12%, transparent);
 }
 
 /* 행 안에서 제목 고치기 */
@@ -2422,7 +2510,7 @@ code {
   color: var(--text);
 }
 .bts-tab.active {
-  color: var(--accent);
+  color: var(--ink-accent);
   border-bottom-color: var(--accent);
 }
 .bts-filter {
@@ -2447,9 +2535,9 @@ code {
   border-color: var(--muted);
 }
 .vf-btn.active {
-  background: rgba(63, 176, 255, 0.15);
+  background: color-mix(in srgb, var(--h-blue) 12%, transparent);
   color: var(--info);
-  border-color: rgba(63, 176, 255, 0.4);
+  border-color: color-mix(in srgb, var(--h-blue) 40%, transparent);
 }
 .bts-sort {
   margin-left: auto;
@@ -2458,7 +2546,7 @@ code {
 }
 .bts-sort.active {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .bts-rows {
   display: flex;
@@ -2478,11 +2566,11 @@ code {
   background: var(--bg-elev);
 }
 .bts-row.tracked {
-  background: rgba(255, 107, 53, 0.07);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
   border-left-color: var(--accent);
 }
 .bts-row.tracked:hover {
-  background: rgba(255, 107, 53, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .bts-date {
   font-variant-numeric: tabular-nums;
@@ -2691,7 +2779,7 @@ code {
 .p4-cl-num {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--ink-accent);
   flex-shrink: 0;
 }
 .p4-cl-desc {
@@ -2772,7 +2860,7 @@ code {
   font-size: 13px;
 }
 .p4-selcount b {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .p4-moveto {
   display: flex;
@@ -2814,24 +2902,24 @@ code {
   font-variant-numeric: tabular-nums;
 }
 .chip.act-edit {
-  background: rgba(63, 176, 255, 0.15);
+  background: color-mix(in srgb, var(--h-blue) 12%, transparent);
   color: var(--info);
-  border-color: rgba(63, 176, 255, 0.35);
+  border-color: color-mix(in srgb, var(--h-blue) 35%, transparent);
 }
 .chip.act-add {
-  background: rgba(63, 185, 80, 0.15);
+  background: color-mix(in srgb, var(--h-green) 12%, transparent);
   color: var(--ok);
-  border-color: rgba(63, 185, 80, 0.35);
+  border-color: color-mix(in srgb, var(--h-green) 35%, transparent);
 }
 .chip.act-delete {
-  background: rgba(255, 107, 107, 0.15);
+  background: color-mix(in srgb, var(--h-red) 12%, transparent);
   color: var(--danger);
-  border-color: rgba(255, 107, 107, 0.35);
+  border-color: color-mix(in srgb, var(--h-red) 35%, transparent);
 }
 .chip.act-integrate {
-  background: rgba(167, 139, 250, 0.15);
-  color: var(--h-purple);
-  border-color: rgba(167, 139, 250, 0.35);
+  background: color-mix(in srgb, var(--h-purple) 12%, transparent);
+  color: var(--ink-purple);
+  border-color: color-mix(in srgb, var(--h-purple) 35%, transparent);
 }
 
 /* 서밋 로그 모달 */
@@ -2909,7 +2997,7 @@ code {
 }
 .p4-ws.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .p4-ws.locked {
   opacity: 0.55;
@@ -2934,20 +3022,20 @@ code {
   margin-left: 4px;
   border-radius: 999px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--ink-accent);
   font-size: 11px;
   font-weight: 600;
   text-align: center;
 }
 /* 사내 = 코드가 밖으로 안 나감 / 사외 = 나감. 색으로도 구분해 둔다. */
 .chip.rv-int {
-  background: color-mix(in srgb, var(--h-green) 15%, transparent);
-  color: var(--h-green);
+  background: color-mix(in srgb, var(--h-green) 12%, transparent);
+  color: var(--ink-green);
   border-color: color-mix(in srgb, var(--h-green) 35%, transparent);
 }
 .chip.rv-ext {
-  background: color-mix(in srgb, var(--h-orange) 15%, transparent);
-  color: var(--h-orange);
+  background: color-mix(in srgb, var(--h-orange) 12%, transparent);
+  color: var(--ink-orange);
   border-color: color-mix(in srgb, var(--h-orange) 35%, transparent);
 }
 
@@ -3096,7 +3184,7 @@ code {
 }
 .rv-hist-item.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .rv-hist-top {
   display: flex;
@@ -3300,17 +3388,17 @@ code {
   vertical-align: middle;
 }
 .md-sev.sev-high {
-  color: var(--h-red);
+  color: var(--ink-red);
   background: color-mix(in srgb, var(--h-red) 14%, transparent);
   border-color: color-mix(in srgb, var(--h-red) 40%, transparent);
 }
 .md-sev.sev-mid {
-  color: var(--h-orange);
+  color: var(--ink-orange);
   background: color-mix(in srgb, var(--h-orange) 14%, transparent);
   border-color: color-mix(in srgb, var(--h-orange) 40%, transparent);
 }
 .md-sev.sev-low {
-  color: var(--h-blue);
+  color: var(--ink-blue);
   background: color-mix(in srgb, var(--h-blue) 14%, transparent);
   border-color: color-mix(in srgb, var(--h-blue) 40%, transparent);
 }
@@ -3437,7 +3525,7 @@ code {
   margin-bottom: 12px;
 }
 .tcal-total b {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .tcal-grid {
   display: grid;
@@ -3472,7 +3560,7 @@ code {
 .tcal-cell.has {
   /* currentColor 는 여기서 --text 로 풀려 색 구분이 전혀 없었다 — 세션 색으로 칠한다.
      글자에 색을 넣지 않고 **칸**을 물들이는 방식이라 어떤 테마에서도 글자가 읽힌다. */
-  background: color-mix(in srgb, var(--bg-elev) 84%, var(--sess) 16%);
+  background: color-mix(in srgb, var(--bg-elev) 88%, var(--sess) 12%);
   border-color: color-mix(in srgb, var(--sess) 40%, transparent);
 }
 .tcal-cell.outside {
@@ -3489,7 +3577,8 @@ code {
 }
 .tcal-none {
   margin: auto;
-  color: var(--border);
+  /* "훈련 없음" 표시라 일부러 속삭이듯 두지만, --border 는 어두운 테마에서 아예 안 보였다 */
+  color: color-mix(in srgb, var(--muted) 45%, transparent);
   font-size: 13px;
 }
 .tcal-km {
@@ -3641,35 +3730,38 @@ code {
 .rm-soft {
   filter: brightness(0.82) saturate(0.9) contrast(1.04);
 }
-/* Leaflet 기본 크롬이 흰색이라 어두운 화면에서 혼자 튄다 */
-.ad-map-box .leaflet-container {
+/* Leaflet 기본 크롬이 흰색이라 어두운 화면에서 혼자 튄다.
+   ⚠️ 선택자에 `.leaflet-container` 를 한 번 더 붙이는 이유: leaflet.css 는 지도 화면에서만
+   불러오는 별도 청크라 **index.css 보다 늦게 주입된다.** 같은 명시도(0,2,0)면 leaflet 이 이겨서
+   저작권 표시가 흰 배경 그대로 남았다(실측 2.06:1). 한 단계 올려서 우리 값이 이기게 한다. */
+.ad-map-box.leaflet-container {
   background: var(--bg-elev);
   font: inherit;
   font-size: 12px;
 }
-.ad-map-box .leaflet-control-attribution {
-  background: rgba(11, 13, 18, 0.7);
+.ad-map-box.leaflet-container .leaflet-control-attribution {
+  background: var(--bg);
   color: var(--muted);
   font-size: 10px;
 }
-.ad-map-box .leaflet-control-attribution a {
+.ad-map-box.leaflet-container .leaflet-control-attribution a {
   color: var(--muted);
 }
-.ad-map-box .leaflet-bar a {
+.ad-map-box.leaflet-container .leaflet-bar a {
   background: var(--bg-card);
   color: var(--text);
   border-bottom-color: var(--border);
 }
-.ad-map-box .leaflet-bar a:hover {
+.ad-map-box.leaflet-container .leaflet-bar a:hover {
   background: var(--bg-elev);
 }
-.ad-map-box .leaflet-tooltip {
+.ad-map-box.leaflet-container .leaflet-tooltip {
   background: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text);
   box-shadow: none;
 }
-.ad-map-box .leaflet-tooltip::before {
+.ad-map-box.leaflet-container .leaflet-tooltip::before {
   border-top-color: var(--border);
 }
 
@@ -3684,7 +3776,7 @@ code {
   flex-wrap: wrap;
 }
 .pb-play {
-  background: var(--accent);
+  background: var(--ink-accent);
   color: var(--on-accent);
   border: none;
   border-radius: 8px;
@@ -3731,7 +3823,7 @@ code {
 
 /* 재생 중 랩 표 — 지금 구간 강조, 아직 안 온 구간은 흐리게 */
 .ad-table tr.lap-now > td {
-  background: rgba(255, 107, 53, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 .ad-table tr.lap-future {
@@ -3745,7 +3837,7 @@ code {
   background: var(--bg-elev);
 }
 .ad-table tr.lap-sel > td {
-  background: color-mix(in srgb, var(--h-yellow) 16%, transparent);
+  background: color-mix(in srgb, var(--h-yellow) 12%, transparent);
   box-shadow: inset 2px 0 0 var(--h-yellow);
 }
 
@@ -3805,8 +3897,8 @@ code {
   margin-left: 10px;
   padding: 1px 8px;
   border-radius: 999px;
-  background: rgba(255, 107, 53, 0.16);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink-accent);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -3865,9 +3957,9 @@ code {
   font-weight: 700;
 }
 .chip.lap-work {
-  background: rgba(255, 107, 53, 0.15);
-  color: var(--h-orange);
-  border-color: rgba(255, 107, 53, 0.35);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink-orange);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .chip.lap-rest {
   background: var(--bg-elev);
@@ -3943,13 +4035,13 @@ code {
 }
 .ad-verdict.v-우수 {
   color: var(--ok);
-  border-color: rgba(63, 185, 80, 0.45);
-  background: rgba(63, 185, 80, 0.1);
+  border-color: color-mix(in srgb, var(--h-green) 45%, transparent);
+  background: color-mix(in srgb, var(--h-green) 10%, transparent);
 }
 .ad-verdict.v-양호 {
   color: var(--info);
-  border-color: rgba(74, 124, 255, 0.45);
-  background: rgba(74, 124, 255, 0.1);
+  border-color: color-mix(in srgb, var(--h-blue) 45%, transparent);
+  background: color-mix(in srgb, var(--h-blue) 10%, transparent);
 }
 .ad-verdict.v-보통 {
   color: var(--muted);
@@ -3958,8 +4050,8 @@ code {
 }
 .ad-verdict.v-주의 {
   color: var(--warn);
-  border-color: rgba(210, 153, 34, 0.45);
-  background: rgba(210, 153, 34, 0.1);
+  border-color: color-mix(in srgb, var(--h-yellow) 45%, transparent);
+  background: color-mix(in srgb, var(--h-yellow) 10%, transparent);
 }
 .ad-findings {
   display: flex;
@@ -3977,11 +4069,11 @@ code {
   line-height: 1.5;
 }
 .ad-finding.lv-good {
-  background: rgba(63, 185, 80, 0.08);
+  background: color-mix(in srgb, var(--h-green) 8%, transparent);
   color: var(--ok);
 }
 .ad-finding.lv-warn {
-  background: rgba(210, 153, 34, 0.1);
+  background: color-mix(in srgb, var(--h-yellow) 10%, transparent);
   color: var(--warn);
 }
 .ad-f-icon {
@@ -4029,7 +4121,7 @@ code {
   font-size: 12px;
 }
 .ad-kp-auto:disabled {
-  opacity: 0.4;
+  /* button:disabled 의 투명도와 곱해져 글자가 사라졌다 — 여기선 커서만 */
   cursor: default;
 }
 .tcal-today {
@@ -4173,7 +4265,7 @@ code {
   font-variant-numeric: tabular-nums;
 }
 .shoe-hero-km b {
-  color: var(--accent);
+  color: var(--ink-accent);
 }
 .shoe-acts-head {
   font-size: 13px;
