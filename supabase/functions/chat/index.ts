@@ -39,16 +39,16 @@ Deno.serve(async (req) => {
     if (!given || !timingSafeEqual(given, NOTE_TOKEN)) return json({ ok: false, error: 'UNAUTHORIZED' }, 401)
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
-    const userId = await firstUserId(admin)
     const url = new URL(req.url)
 
     if (req.method === 'GET') {
       const kind = url.searchParams.get('data')
-      if (kind) return json({ ok: true, ...(await readData(admin, userId, kind)) })
+      if (kind) return json({ ok: true, ...(await readData(admin, await resolveUserId(admin), kind)) })
 
       if (url.searchParams.get('poll')) {
+        // 질문은 사용자를 추측하지 않는다 — 행이 자기 주인을 들고 있다
         const max = Math.min(10, Math.max(1, Number(url.searchParams.get('max') ?? 5) || 5))
-        return json({ ok: true, messages: await takePending(admin, userId, max) })
+        return json({ ok: true, messages: await takePending(admin, max) })
       }
       return json({ ok: false, error: 'poll=1 또는 data=<kind> 가 필요합니다.' }, 400)
     }
@@ -63,7 +63,6 @@ Deno.serve(async (req) => {
         const { error } = await admin
           .from('chat_messages')
           .update({ status: 'error', error: failure, answered_at: new Date().toISOString() })
-          .eq('user_id', userId)
           .eq('id', messageId)
         if (error) throw new Error(error.message)
         return json({ ok: true, failed: messageId })
@@ -73,18 +72,17 @@ Deno.serve(async (req) => {
       if (!content) return json({ ok: false, error: 'content 또는 error 가 필요합니다.' }, 400)
       if (content.length > 20000) return json({ ok: false, error: 'content 가 너무 깁니다 (2만자 제한).' }, 400)
 
-      // 어느 대화에 달아야 하는지는 질문 행이 안다
+      // 어느 대화에 달지도, 누구 것인지도 질문 행이 안다 — 사용자를 따로 추측하지 않는다
       const { data: asked, error: e1 } = await admin
         .from('chat_messages')
-        .select('id, thread_id')
-        .eq('user_id', userId)
+        .select('id, thread_id, user_id')
         .eq('id', messageId)
         .maybeSingle()
       if (e1) throw new Error(e1.message)
       if (!asked) return json({ ok: false, error: '해당 메시지가 없습니다.' }, 404)
 
       const { error: e2 } = await admin.from('chat_messages').insert({
-        user_id: userId,
+        user_id: asked.user_id,
         thread_id: asked.thread_id,
         role: 'assistant',
         content,
@@ -97,7 +95,6 @@ Deno.serve(async (req) => {
       const { error: e3 } = await admin
         .from('chat_messages')
         .update({ status: 'done', answered_at: new Date().toISOString() })
-        .eq('user_id', userId)
         .eq('id', messageId)
       if (e3) throw new Error(e3.message)
 
@@ -120,8 +117,37 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0
 }
 
-/** 1인용 앱이라 사용자는 하나다. */
-async function firstUserId(admin: SupabaseClient): Promise<string> {
+/**
+ * 어느 사용자의 데이터를 볼 것인가.
+ *
+ * ⚠️ "1인용 앱이니 첫 사용자" 로 집으면 안 된다. 실제로 계정이 둘이 되는 일이 있었고
+ *    (앱은 A 로 로그인, 동기화는 B 로 들어감), `listUsers(1건)` 이 엉뚱한 쪽을 집어서
+ *    질문이 영영 안 잡혔다 — 200 인데 아무 일도 안 일어나는 형태라 원인 찾기도 어려웠다.
+ *
+ * 그래서 **실제로 앱을 쓰고 있는 사람**을 데이터에서 고른다:
+ *   MEOS_USER_ID 시크릿 → 가장 최근에 질문한 사람 → 가장 최근 활동의 주인 → 첫 사용자
+ */
+const FORCED_USER_ID = Deno.env.get('MEOS_USER_ID')?.trim() ?? ''
+
+async function resolveUserId(admin: SupabaseClient): Promise<string> {
+  if (FORCED_USER_ID) return FORCED_USER_ID
+
+  const { data: chat } = await admin
+    .from('chat_messages')
+    .select('user_id')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (chat?.user_id) return chat.user_id as string
+
+  const { data: act } = await admin
+    .from('activities')
+    .select('user_id')
+    .order('start_date_local', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (act?.user_id) return act.user_id as string
+
   const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 })
   if (error) throw new Error(`사용자 조회 실패: ${error.message}`)
   const id = data?.users?.[0]?.id
@@ -136,11 +162,10 @@ async function firstUserId(admin: SupabaseClient): Promise<string> {
  *    update ... in (id들) 의 결과로 실제로 잡은 행만 돌려주므로, 폴링이 겹쳐도
  *    한 질문은 한 번만 나간다 (status='pending' 조건이 두 번째 update 를 0행으로 만든다).
  */
-async function takePending(admin: SupabaseClient, userId: string, max: number) {
+async function takePending(admin: SupabaseClient, max: number) {
   const { data: rows, error } = await admin
     .from('chat_messages')
     .select('id')
-    .eq('user_id', userId)
     .eq('role', 'user')
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
@@ -152,7 +177,6 @@ async function takePending(admin: SupabaseClient, userId: string, max: number) {
   const { data: taken, error: e2 } = await admin
     .from('chat_messages')
     .update({ status: 'taken' })
-    .eq('user_id', userId)
     .eq('status', 'pending')
     .in('id', ids)
     .select('id, thread_id, content, context, created_at')

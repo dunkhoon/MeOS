@@ -86,8 +86,29 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0
 }
 
-/** 1인용 앱이라 사용자는 하나다. */
+/**
+ * 어느 사용자의 데이터를 볼 것인가.
+ *
+ * ⚠️ "1인용 앱이니 첫 사용자" 로 집으면 안 된다. 실제로 계정이 둘이 되는 일이 있었고
+ *    (앱은 A, 잘못된 동기화가 B 로 들어감), `listUsers(1건)` 이 데이터가 거의 없는 쪽을
+ *    집어서 이 함수가 엉뚱한 활동 목록을 내주고 있었다.
+ *
+ * 그래서 **실제로 기록이 쌓이는 쪽**을 데이터에서 고른다:
+ *   MEOS_USER_ID 시크릿 → 가장 최근 활동의 주인 → 첫 사용자
+ */
+const FORCED_USER_ID = Deno.env.get('MEOS_USER_ID')?.trim() ?? ''
+
 async function firstUserId(admin: SupabaseClient): Promise<string> {
+  if (FORCED_USER_ID) return FORCED_USER_ID
+
+  const { data: act } = await admin
+    .from('activities')
+    .select('user_id')
+    .order('start_date_local', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (act?.user_id) return act.user_id as string
+
   const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 })
   if (error) throw new Error(`사용자 조회 실패: ${error.message}`)
   const id = data?.users?.[0]?.id
