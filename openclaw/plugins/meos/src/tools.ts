@@ -1,4 +1,6 @@
-import { Type } from "typebox";
+// ⚠️ `import type` 라서 빌드 후 완전히 사라진다 — 런타임에 typebox 를 요구하지 않는다.
+//    값으로 import(`import { Type }`) 하면 그 순간 런타임 의존이 생겨 아래 주석의 문제가 터진다.
+import type { TSchema } from "typebox";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 import { readData, type MeosDataKind } from "./client.js";
@@ -15,7 +17,16 @@ import { resolveMeosAccount } from "./config.js";
 type RegisterToolArg = Parameters<OpenClawPluginApi["registerTool"]>[0];
 type MeosTool = Extract<RegisterToolArg, { name: string }>;
 
-const NO_PARAMS = Type.Object({}, { additionalProperties: false });
+/**
+ * 인자 없는 도구의 스키마.
+ *
+ * ⚠️ typebox 의 `Type.Object({})` 를 쓰지 않는다. 플러그인이 `~/.openclaw/plugins/` 아래
+ *    설치되면 node 해석이 openclaw 안쪽의 typebox 까지 못 닿아서 import 가 깨지고,
+ *    그러면 **플러그인 전체가 안 뜬다**(채널도 같이 사라진다).
+ *    typebox 스키마는 런타임에 결국 이 JSON Schema 객체와 같은 모양이라 그대로 쓴다.
+ *    타입 표기만 맞춰 주면 되므로 여기서만 단언한다.
+ */
+const NO_PARAMS = { type: "object", properties: {}, additionalProperties: false } as unknown as TSchema;
 
 function makeTool(
   name: string,

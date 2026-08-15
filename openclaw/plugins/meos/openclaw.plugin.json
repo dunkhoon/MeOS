@@ -12,8 +12,9 @@
       "label": "MeOS",
       "description": "MeOS 어시스턴트 채널 설정.",
       "schema": {
+        "comment": "additionalProperties 를 막지 않는다 — OpenClaw 가 enabled·dmSecurity 같은 공통 키를 같은 자리에 넣는데, false 로 두면 그 설정이 스키마 검증에서 튕겨 채널이 안 뜬다.",
         "type": "object",
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "baseUrl": {
             "type": "string",
