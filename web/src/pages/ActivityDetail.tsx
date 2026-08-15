@@ -43,6 +43,32 @@ const TICK_MS = 60
 import { SESSION_COLOR, SESSION_KINDS, SESSION_LABEL, isManualKind, sessionKind, type SessionKind } from '../lib/session'
 import { analyzeSession, type Finding } from '../lib/nsm'
 import { alpha, ink } from '../lib/color'
+import { AskButton } from '../components/AskButton'
+
+/**
+ * 이 훈련 하나를 분석해 달라는 요청을 만든다.
+ *
+ * **활동 id 를 반드시 박는다.** 이게 없으면 에이전트가 `recent` 목록에서 스스로 고르는데,
+ * 지금 보고 있는 훈련이 아닌 엉뚱한 것에 코멘트를 올릴 수 있다.
+ * 날짜·이름도 같이 줘서 사람이 봐도 어느 훈련인지 알아보게 한다.
+ */
+function askAboutActivity(a: { external_id: string; name: string | null; type: string | null; start_date_local: string | null }) {
+  const when = a.start_date_local ? dayjs(a.start_date_local).format('YYYY년 M월 D일 (ddd) HH:mm') : ''
+  const what = [when, a.name].filter(Boolean).join(' ')
+  return {
+    question:
+      `${what} 에 한 ${a.type ?? '러닝'} 훈련 분석해줘 (활동 id: ${a.external_id}). ` +
+      '랩까지 보고 이번 세션이 의도한 자극을 줬는지, 걱정되는 신호가 있는지, ' +
+      '다음 세션은 어떻게 조정하면 좋을지 알려줘. ' +
+      '분석이 끝나면 **MeOS 훈련 상세에도 올려줘** (같은 활동 id 로).',
+    context: {
+      활동id: a.external_id,
+      날짜: when,
+      이름: a.name,
+      종류: a.type,
+    },
+  }
+}
 
 // 훈련 상세 — 캘린더/최근활동에서 넘어온다. 요약 + 랩 분석 + 데이터 추이.
 
@@ -326,6 +352,7 @@ export default function ActivityDetail() {
             {act?.device_name ? ` · ${act.device_name}` : ''}
           </p>
         </div>
+        {act && <AskButton {...askAboutActivity(act)} label="AI 분석 요청" />}
       </header>
 
       {err && <div className="sync-msg err">{err}</div>}
@@ -407,7 +434,20 @@ export default function ActivityDetail() {
             </div>
           )}
 
-          {/* ── 외부 AI 코멘트 (OpenClaw → Edge Function `note`) ── */}
+          {/* ── 외부 AI 코멘트 (OpenClaw → Edge Function `note`) ──
+              아직 없으면 요청할 자리를 남겨 둔다. 결과가 바로 이 자리에 달리므로
+              버튼과 결과가 같은 곳에 있는 게 이해하기 쉽다. */}
+          {notes.length === 0 && (
+            <div className="card ad-note-empty">
+              <div>
+                <h3 className="card-title">🤖 AI 코멘트</h3>
+                <p className="muted small">
+                  이 훈련을 분석해 여기에 남깁니다. 집 PC 의 OpenClaw 가 답하며, 몇 십 초 걸립니다.
+                </p>
+              </div>
+              <AskButton {...askAboutActivity(act)} label="AI 분석 요청" />
+            </div>
+          )}
           {notes.map((n) => (
             <div className="card ad-note" key={n.source}>
               <div className="ad-note-head">

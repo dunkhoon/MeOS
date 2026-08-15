@@ -5460,3 +5460,25 @@ code {
     gap: 3px 10px;
   }
 }
+
+/* 훈련 상세 헤더 — 제목 왼쪽, AI 요청 버튼 오른쪽 */
+.ad-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* AI 코멘트가 아직 없을 때 그 자리에 두는 안내 + 요청 버튼.
+   결과가 바로 이 자리에 달리므로 버튼과 결과가 같은 곳에 있어야 이해된다. */
+.ad-note-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ad-note-empty .card-title {
+  margin-bottom: 2px;
+}
