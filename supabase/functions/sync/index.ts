@@ -6,7 +6,7 @@
 //
 // 호출 두 가지:
 //   ① 앱에서   — 로그인한 사용자의 JWT → 그 사용자 데이터로 동기화
-//   ② cron/CLI — service_role 키 → 사용자를 특정할 수 없으므로 가입된 첫 사용자로 (1인용 앱)
+//   ② cron/CLI — service_role 키 → 세션이 없으므로 데이터에서 대상을 고른다 (resolveUserId 참고)
 //
 // 배포:  npx supabase functions deploy sync
 // 비밀값: npx supabase secrets set INTERVALS_ATHLETE_ID=... (README 참고)
@@ -37,6 +37,21 @@ const json = (body: unknown, status = 200) =>
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 const daysFrom = (base: Date, n: number) => new Date(base.getTime() + n * 86400000)
+
+/**
+ * intervals.icu 의 oldest/newest 는 **선수 현지 날짜**로 거르는데, `ymd()` 는 UTC 날짜를 준다.
+ *
+ * ⚠️ 이 한 칸 차이로 **매일 아침 운동이 안 들어왔다.** KST(+9) 기준 08:10 은 UTC 로
+ *    전날 23:10 이라 `newest` 가 어제 날짜가 되고, 그날 06시에 뛴 러닝이 범위 밖으로 떨어진다.
+ *    00~09시 사이에 새로고침하면 늘 그랬다.
+ *
+ * 선수의 시간대를 알 방법이 마땅치 않으므로(활동의 `timezone` 이 null 로 온다)
+ * 양쪽으로 하루씩 넓힌다. 어떤 시간대(-12~+14)에서도 오늘이 반드시 들어온다.
+ * 조금 더 받아 오지만 upsert 라 중복은 생기지 않는다.
+ */
+const TZ_SLACK_DAYS = 1
+const newestYmd = (now: Date) => ymd(daysFrom(now, TZ_SLACK_DAYS))
+const oldestYmd = (now: Date, back: number) => ymd(daysFrom(now, -(back + TZ_SLACK_DAYS)))
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -115,7 +130,7 @@ async function runSync(supabase: SupabaseClient, userId: string, full: boolean, 
   }
 
   // ── 활동 ──
-  const acts = await icu(`/activities?oldest=${ymd(daysFrom(now, -win.activities))}&newest=${ymd(now)}`)
+  const acts = await icu(`/activities?oldest=${oldestYmd(now, win.activities)}&newest=${newestYmd(now)}`)
   const activityRows = (acts as any[]).map((a) => ({
     user_id: userId,
     external_id: String(a.id),
@@ -141,7 +156,7 @@ async function runSync(supabase: SupabaseClient, userId: string, full: boolean, 
   }
 
   // ── 웰니스 ──
-  const well = await icu(`/wellness?oldest=${ymd(daysFrom(now, -win.wellness))}&newest=${ymd(now)}`)
+  const well = await icu(`/wellness?oldest=${oldestYmd(now, win.wellness)}&newest=${newestYmd(now)}`)
   const wellnessRows = (well as any[]).map((w) => ({
     user_id: userId,
     day: w.id,
