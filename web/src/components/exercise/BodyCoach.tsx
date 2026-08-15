@@ -19,8 +19,14 @@ export function BodyCoach({ plan }: { plan: CoachPlan }) {
         <div className="bc-actions">
           <span className={`chip mode-${plan.mode}`}>{MODE_LABEL[plan.mode]}</span>
           {/* 규칙이 뽑은 수치를 그대로 실어 보낸다 — 에이전트는 해석과 조정만 하면 된다 */}
+          {/* 질문 문구가 곧 라우팅이다 — "훈련/기록" 같은 말만 쓰면 러닝 분석으로 끌려간다.
+              무엇에 대한 질문인지(체성분·영양)와 어떤 도구를 볼지를 문장 안에 박아 둔다. */}
           <AskButton
-            question="지금 목표랑 최근 기록 보고, 이번 주에 뭘 어떻게 조정하면 좋을지 알려줘."
+            question={
+              '체형·영양 질문이야 (러닝 훈련 분석 아님). meos_body 와 meos_overview 로 ' +
+              '내 인바디 추이·목표·최근 섭취를 보고, 이번 주에 식사와 운동을 어떻게 조절하면 좋을지 알려줘. ' +
+              '아래 맥락은 앱이 규칙으로 계산해 둔 값이니 숫자를 다시 나열하지 말고 해석과 다음 행동만.'
+            }
             context={{
               모드: MODE_LABEL[plan.mode],
               유지칼로리: plan.tdee,

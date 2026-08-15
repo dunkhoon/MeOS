@@ -116,7 +116,10 @@ export function StrengthTab() {
         <div className="ask-row">
           <AskButton
             label="근력 물어보기"
-            question="최근 근력 운동 흐름 봐줘. 볼륨이랑 종목 균형 어때? 다음 주엔 뭘 바꾸면 좋을까?"
+            question={
+              '근력 질문이야 (러닝 훈련 분석 아님). meos_strength 로 최근 세션의 종목·중량·횟수를 보고, ' +
+              '볼륨 추세와 부위 균형이 어떤지, 다음 주엔 뭘 바꾸면 좋을지 알려줘.'
+            }
             context={{
               이번주: {
                 횟수: weekSessions.length,
