@@ -12,6 +12,7 @@ import Report from './pages/Report'
 import Perforce from './pages/Perforce'
 import Trash from './pages/Trash'
 import Settings from './pages/Settings'
+import Assistant from './pages/Assistant'
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -33,7 +34,10 @@ export default function App() {
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/exercise" element={<Exercise />} />
+              {/* 서브탭(활동·근력·체형) 은 주소에 남긴다 — 뒤로가기·링크·새로고침이 다 살아난다 */}
+              <Route path="/exercise/:tab" element={<Exercise />} />
               <Route path="/activity/:id" element={<ActivityDetail />} />
+              <Route path="/assistant" element={<Assistant />} />
               <Route path="/report" element={<Report />} />
               <Route path="/perforce" element={<Perforce />} />
               <Route path="/trash" element={<Trash />} />

@@ -1,0 +1,161 @@
+import { postAnswer, postFailure, type MeosAccount, type MeosPendingMessage } from "./client.js";
+import { CHANNEL_ID } from "./config.js";
+
+// 질문 하나를 에이전트에 태우고, 나온 답을 MeOS 로 돌려보낸다.
+//
+// 호출 순서는 번들 채널들이 쓰는 것과 같다:
+//   라우트 해석 → 세션 경로 → 컨텍스트 확정 → 세션 기록 → 디스패처로 답 받기
+//
+// 디스패처의 deliver 가 곧 "MeOS 에 답 저장" 이다. 채팅 화면이 그 행을 보고 뜬다.
+
+/** `ctx.channelRuntime` — 게이트웨이가 호출마다 넣어 주는 런타임 표면. */
+export type MeosChannelRuntime = {
+  routing: {
+    resolveAgentRoute: (params: {
+      cfg: unknown;
+      channel: string;
+      accountId?: string;
+      peer: { kind: "direct"; id: string };
+    }) => { agentId: string; sessionKey: string; mainSessionKey?: string };
+  };
+  session: {
+    resolveStorePath: (store: unknown, opts: { agentId: string }) => string;
+    recordInboundSession: (params: Record<string, unknown>) => Promise<void>;
+  };
+  reply: {
+    finalizeInboundContext: (ctx: Record<string, unknown>) => Record<string, unknown>;
+    resolveHumanDelayConfig: (cfg: unknown, agentId: string) => unknown;
+    createReplyDispatcherWithTyping: (params: Record<string, unknown>) => {
+      dispatcher: unknown;
+      replyOptions: Record<string, unknown>;
+      markDispatchIdle: () => void;
+    };
+    withReplyDispatcher: (params: { dispatcher: unknown; run: () => Promise<unknown> }) => Promise<unknown>;
+    dispatchReplyFromConfig: (params: Record<string, unknown>) => Promise<unknown>;
+  };
+};
+
+export type HandleDeps = {
+  account: MeosAccount;
+  cfg: unknown;
+  channelRuntime: MeosChannelRuntime;
+  log: (msg: string) => void;
+  errLog: (msg: string) => void;
+};
+
+/** 화면에서 실어 보낸 맥락을 질문 앞에 붙인다 — 에이전트가 도구를 안 불러도 바로 답할 수 있게. */
+function bodyWithContext(message: MeosPendingMessage): string {
+  const ctx = message.context;
+  if (!ctx || typeof ctx !== "object") return message.content;
+  let rendered: string;
+  try {
+    rendered = JSON.stringify(ctx, null, 2);
+  } catch {
+    return message.content;
+  }
+  // 맥락이 지나치게 크면 프롬프트를 잡아먹는다. 넘치면 도구로 다시 읽으면 된다.
+  if (rendered.length > 6000) rendered = `${rendered.slice(0, 6000)}\n…(생략)`;
+  return `[MeOS 화면 맥락]\n${rendered}\n\n${message.content}`;
+}
+
+export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMessage): Promise<void> {
+  const { account, cfg, channelRuntime } = deps;
+  // 답을 되돌릴 대상은 "대화" 다. 대화마다 세션이 갈리므로 새 대화 = 새 맥락이 된다.
+  const to = message.thread_id;
+
+  const ctx: Record<string, unknown> = {
+    Body: bodyWithContext(message),
+    From: "meos-user",
+    To: to,
+    AccountId: account.accountId ?? undefined,
+    OriginatingChannel: CHANNEL_ID,
+    OriginatingTo: to,
+    MessageSid: message.id,
+    Timestamp: Date.parse(message.created_at) || Date.now(),
+    Provider: CHANNEL_ID,
+    ChatType: "direct",
+    // 이 채널에 들어오는 유일한 길이 공유 토큰이다 — 여기까지 온 메시지는 곧 운영자 본인이다.
+    CommandAuthorized: true,
+    CommandBody: message.content.trim(),
+  };
+
+  const route = channelRuntime.routing.resolveAgentRoute({
+    cfg,
+    channel: CHANNEL_ID,
+    accountId: account.accountId ?? undefined,
+    peer: { kind: "direct", id: to },
+  });
+  if (!route?.agentId) {
+    await postFailure(account, { messageId: message.id, error: "에이전트를 찾지 못했습니다 (agent route 없음)." });
+    return;
+  }
+
+  // 해석된 세션을 ctx 에 실어야 dispatchReplyFromConfig 가 agent:main:main 으로 안 떨어진다
+  ctx.SessionKey = route.sessionKey;
+
+  const storePath = channelRuntime.session.resolveStorePath((cfg as { session?: { store?: unknown } })?.session?.store, {
+    agentId: route.agentId,
+  });
+  const finalized = channelRuntime.reply.finalizeInboundContext(ctx);
+
+  await channelRuntime.session.recordInboundSession({
+    storePath,
+    sessionKey: route.sessionKey,
+    ctx: finalized,
+    updateLastRoute: {
+      sessionKey: route.mainSessionKey,
+      channel: CHANNEL_ID,
+      to,
+      accountId: account.accountId ?? undefined,
+    },
+    onRecordError: (err: unknown) => deps.errLog(`recordInboundSession: ${String(err)}`),
+  });
+
+  // 답을 여러 조각으로 흘려보내면 채팅에 말풍선이 여러 개 뜬다.
+  // MeOS 는 한 질문에 한 답이 자연스러우니 모았다가 한 번에 저장한다.
+  const chunks: string[] = [];
+  let delivered = false;
+
+  const humanDelay = channelRuntime.reply.resolveHumanDelayConfig(cfg, route.agentId);
+  const { dispatcher, replyOptions, markDispatchIdle } = channelRuntime.reply.createReplyDispatcherWithTyping({
+    humanDelay,
+    deliver: async (payload: { text?: string }) => {
+      const text = (payload?.text ?? "").trim();
+      if (text) chunks.push(text);
+      delivered = true;
+    },
+    onError: (err: unknown, info: { kind: string }) => {
+      deps.errLog(`meos reply ${info?.kind ?? "?"}: ${String(err)}`);
+    },
+  });
+
+  try {
+    await channelRuntime.reply.withReplyDispatcher({
+      dispatcher,
+      run: () =>
+        channelRuntime.reply.dispatchReplyFromConfig({
+          ctx: finalized,
+          cfg,
+          dispatcher,
+          replyOptions: { ...replyOptions, disableBlockStreaming: true },
+        }),
+    });
+  } catch (err) {
+    await postFailure(account, { messageId: message.id, error: String(err).slice(0, 2000) });
+    return;
+  } finally {
+    markDispatchIdle();
+  }
+
+  const answer = chunks.join("\n\n").trim();
+  if (!answer) {
+    // 도구만 돌고 글이 안 나온 경우도 있다 — 화면에 영원히 '대기 중' 으로 남으면 안 된다
+    await postFailure(account, {
+      messageId: message.id,
+      error: delivered ? "빈 답이 돌아왔습니다." : "에이전트가 답하지 않았습니다.",
+    });
+    return;
+  }
+  await postAnswer(account, { messageId: message.id, content: answer });
+  deps.log(`answered ${message.id} (${answer.length}자)`);
+}

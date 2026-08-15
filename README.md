@@ -30,8 +30,12 @@ INTERVALS_API_KEY=...            # intervals.icu API key (서버/동기화용)
 ### Supabase 초기 설정 (최초 1회)
 
 1. **스키마 적용**: 대시보드 → SQL Editor → `supabase/migrations/` 의 `.sql` 을 **번호순으로** 실행
-   (`0001_init` → `0002_races` → `0003_hr_zones` → `0004_calendar` → `0005_work`). 모두 재실행 안전.
+   (`0001_init` → `0002_races` → `0003_hr_zones` → `0004_calendar` → `0005_work` →
+   `0007_activity_notes` → `0008_session_kind` → `0009_shoes` → `0010_strength` → `0011_body` →
+   `0012_chat`). 모두 재실행 안전.
    `0006_cron_sync` 는 자동 동기화용 — 아래 [동기화](#동기화-supabase-edge-function) 참고 (선택).
+   `0010`/`0011` 은 운동 탭의 **근력**·**체형·목표** 서브탭용, `0012` 는 **어시스턴트** 탭용 —
+   안 돌리면 그 화면만 비어 있고 나머지는 그대로 동작한다.
 2. **인증 URL 등록**: Authentication → URL Configuration
    - Site URL: `http://localhost:5173`
    - Redirect URLs 에 `http://localhost:5173` 추가 (배포 후 배포 URL도 추가)
@@ -65,8 +69,11 @@ intervals.icu(활동·웰니스·대회)와 구글 캘린더를 Supabase DB 로 
 npx supabase login                                  # 브라우저로 1회 인증
 npx supabase link --project-ref ggtnaqmmdjcfhkqzjhty
 npx supabase secrets set --env-file supabase/.env.secrets   # 시크릿 등록
-npm run functions:deploy                            # = supabase functions deploy sync activity
+npm run functions:deploy                            # sync · activity · note · chat 전부
 ```
+
+> 이건 **개발 PC 의 저장소 루트**에서 돌린다 (OpenClaw 가 도는 집 PC 가 아니다).
+> 하나만 고쳤으면 그것만 올려도 된다 — 예: `npx supabase functions deploy chat`.
 
 - `supabase/.env.secrets` 는 `.env.local` 에서 복사해 만든 파일이고 **git 에서 제외**돼 있다
   (`INTERVALS_ATHLETE_ID` · `INTERVALS_API_KEY` · `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN`).
@@ -286,6 +293,47 @@ JS 에서 색을 인라인으로 넣을 때는 `lib/color.ts` 의 `ink(color)` �
 - 계산은 순수 함수 `web/src/lib/playback.ts` 로 분리했다(보간·랩 판정·진행 속도). 화면 없이 테스트한다.
 - GPS 가 없는 활동은 지도가 없으므로 재생도 없다.
 
+## 운동 탭 — 세 개의 서브탭
+
+주소에 남는다(`/exercise`, `/exercise/strength`, `/exercise/body`). 뒤로가기·링크·새로고침이 다 살아난다.
+
+| 탭 | 무엇 | 데이터 |
+|---|---|---|
+| **활동** | 러닝·유산소 — 캘린더·거리·심박존·Fitness·컨디션·러닝화 | intervals.icu 동기화 |
+| **근력** | 세트 타이머 · 근력 캘린더 · 주간 볼륨 · 종목 진척 | 앱에서 직접 기록 (`0010`) |
+| **체형·목표** | 인바디 추이 · 목표 진행률 · 섭취 권장/기록 · 조정 조언 | InBody CSV + 규칙 계산 (`0011`) |
+
+### 근력 세트 트래커
+
+`운동 시작` → `세트 시작`(종목·중량 고르기) → 타이머 → `세트 중단`(횟수 입력) → `다음 세트` … → `운동 종료`.
+
+- **휴식은 저장하지 않는다.** 세트 사이의 빈 시간이 곧 휴식이다. 행으로 따로 두면 세트를 지울 때
+  두 기록이 어긋난다. 볼 때 앞 세트의 끝 ~ 다음 세트의 시작 간격으로 계산한다.
+- **경과 시간은 언제나 벽시계(`Date.now()`)로 잰다.** 1씩 더해 세면 화면이 꺼졌을 때 타이머가
+  throttle 돼서 실제보다 짧게 기록된다. 헬스장에서 쓰는 기능이라 이건 바로 틀린 기록이 된다.
+- **진행 중엔 로컬(localStorage)에만 쌓고 종료할 때 한 번에 올린다.** 헬스장은 통신이 끊기는 곳이다.
+  올리기가 실패해도 로컬 기록이 남아 다음에 켤 때 다시 시도한다.
+- 세션 도는 동안 Wake Lock 으로 화면이 꺼지지 않게 잡는다(거부돼도 기능은 그대로).
+- 직접 기록한 세션과 **시간이 겹치는 intervals.icu `WeightTraining` 활동은 활동 탭에서 숨긴다.**
+  한 운동이 두 번 세이면 주간 횟수가 부풀려진다. 매칭은 저장할 때가 아니라 **볼 때** 계산한다 —
+  Garmin → intervals.icu 반영이 늦어서 세션을 끝낸 시점엔 짝이 될 활동이 아직 없다.
+
+### 체형·목표
+
+- **인바디 CSV** 를 끌어다 놓으면 들어간다. UTF-8 BOM, 결측은 `'-'`, 날짜는 `YYYYMMDDHHmmss`.
+  기기마다 주는 열이 다르므로(270S 는 45열 중 27열이 `-`) 매핑 안 된 열도 `raw` 에 통째로 남긴다.
+  같은 파일을 다시 올려도 늘지 않는다 — 측정 시각이 그 측정의 신원이라 upsert 로 덮는다.
+- **목표는 "수치 + 날짜"** 로 세운다. 화면이 답하는 건 셋 — 지금 어디쯤인가, 기한을 맞추려면
+  주당 얼마나 가야 하나, 지금 속도로는 언제 닿나. 월 단위 **단계 계획**도 같이 나온다.
+- **조언은 전부 공식**이다 (`web/src/lib/coach.ts`) — AI 아님, 오프라인, 같은 입력이면 같은 답.
+  - 유지 칼로리 = **인바디가 준 기초대사량** × 생활 계수 + 최근 4주 하루 평균 운동 소모
+    (공식으로 BMR 을 추정하지 않는다. 제지방량을 실제로 잰 값이 이 사람에게 맞는다)
+  - 단백질은 체중이 아니라 **제지방량** 기준 (체지방은 단백질을 안 쓴다)
+  - 가드레일: 섭취를 기초대사량 아래로 내리지 않는다 · 적자는 유지의 25%, 잉여는 15%까지 ·
+    주당 감량이 체중의 1%를 넘으면 경고한다
+- 추세는 앞뒤 두 점이 아니라 **구간 전체를 최소제곱 회귀**한다. 인바디는 물만 마셔도 체중이
+  0.5kg 씩 움직여서, 두 점만 빼면 그날 수분 상태 하나에 추세가 통째로 흔들린다.
+
 ## 훈련 분석 — 규칙 기반 + 외부 AI
 
 훈련 상세 화면에는 분석이 **두 층**으로 붙는다.
@@ -337,6 +385,34 @@ curl -s -X POST "$BASE" -H "x-meos-token: $MEOS_NOTE_TOKEN"   -H 'Content-Type: 
 > **왜 브라우저에서 OpenClaw 를 직접 부르지 않나**: MeOS 는 https 로 서비스되는데 `ws://집IP:18789`
 > 같은 평문 연결은 브라우저가 막는다(mixed content). https 로 뚫으면 되긴 하지만, 그러려면
 > **파일을 읽고 명령을 실행하는 에이전트를 인터넷에 노출**해야 한다. 위 방식은 그럴 필요가 없다.
+
+## 어시스턴트 탭 — 앱 안에서 OpenClaw 와 대화
+
+훈련 코멘트(위 `note`)가 **한 방향**이라면, 어시스턴트는 **주고받는** 쪽이다.
+앱에서 물어보면 집 PC 의 OpenClaw 가 답하고 그 답이 화면에 바로 뜬다. 휴대폰에서도 같다.
+
+```
+MeOS 앱 (폰/PC)              Supabase                집 PC (OpenClaw)
+   │ 질문 ──(RLS insert)──▶ chat_messages                │
+   │                            │ ◀──(폴링, x-meos-token)── meos 채널 플러그인
+   │                            │                        │  에이전트 실행
+   │ ◀──(2초 폴링)───────────  │ ◀──(답 insert)──────── │
+```
+
+여기서도 **집 PC 는 밖으로 나가기만 한다** — 포트포워딩·터널·고정IP 불필요. 창구는 Edge Function
+`chat` 이고 인증은 `note` 와 같은 `MEOS_NOTE_TOKEN` 이다 (에이전트 쪽 비밀은 하나로 유지).
+
+- 각 화면의 **✦ 물어보기** 버튼은 지금 보고 있는 수치를 그대로 실어 보낸다 — 에이전트가
+  도구를 안 불러도 첫 답이 정확해진다.
+- 에이전트에게는 조회 도구도 준다 (`meos_overview` · `meos_activities` · `meos_strength` ·
+  `meos_body`). 그래서 "지난달이랑 비교하면?" 처럼 화면에 없는 것도 답할 수 있다.
+- 설치와 설정은 [`openclaw/plugins/meos/`](openclaw/plugins/meos/) 참고.
+
+> **왜 앱이 답을 폴링하나**: 답이 오기까지 보통 수십 초다. Supabase Realtime 을 쓰면 publication
+> 설정이 따로 필요한데, 기다리는 동안만 2초로 훑는 편이 설정도 없고 어디서나 똑같이 동작한다.
+
+> **왜 대화를 안 실어 보내나**: OpenClaw 가 `thread_id` 별로 자기 세션을 들고 있다. 앱에서도
+> 보내면 같은 내용이 두 번 들어간다. **새 대화 = 새 thread = 새 세션**이다.
 
 ### 업무 탭 — Redmine / JIRA 연결 (선택, PC 전용)
 

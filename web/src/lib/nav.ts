@@ -44,6 +44,12 @@ export const NAV: NavEntry[] = [
     keywords: ['퍼포스', 'p4', '체인지리스트', 'cl', '서밋', 'submit'],
   },
   { to: '/exercise', label: '운동', icon: '◠', keywords: ['exercise', '활동', '훈련', 'intervals'] },
+  {
+    to: '/assistant',
+    label: '어시스턴트',
+    icon: '✦',
+    keywords: ['assistant', 'ai', '챗', 'chat', '대화', '물어보기', 'openclaw'],
+  },
   { to: '/report', label: '리포트', icon: '▧', keywords: ['report', '보고서', '요약'] },
   { to: '/trash', label: '휴지통', icon: '🗑', keywords: ['trash', '삭제', '복원'] },
   { to: '/settings', label: '설정', icon: '⚙', keywords: ['settings', '환경설정', 'config', '비밀번호'] },

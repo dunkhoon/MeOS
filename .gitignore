@@ -40,3 +40,6 @@ garmin-tokens.json
 
 # 서브셋 생성 중간 산물
 scripts/.font-chars.txt
+
+# OpenClaw 플러그인 검증용 SDK 사본 (저장소에 넣지 않는다)
+openclaw/plugins/*/node_modules/

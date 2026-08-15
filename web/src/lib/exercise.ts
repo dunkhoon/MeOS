@@ -5,6 +5,21 @@ import { supabase } from './supabase'
 // 주(week) 계산을 월요일 시작(ISO week)으로
 dayjs.extend(isoWeek)
 
+// Supabase 에러는 Error 인스턴스가 아닐 수 있어 message를 안전하게 추출
+export function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (e && typeof e === 'object') {
+    const m = (e as { message?: unknown }).message
+    if (typeof m === 'string' && m) return m
+    try {
+      return JSON.stringify(e)
+    } catch {
+      return String(e)
+    }
+  }
+  return String(e)
+}
+
 export interface Activity {
   id: string
   external_id: string

@@ -1,0 +1,44 @@
+{
+  "id": "meos",
+  "version": "0.1.0",
+  "name": "MeOS",
+  "description": "MeOS 어시스턴트 채널 + 내 운동·체형 데이터 조회 도구",
+  "channels": ["meos"],
+  "contracts": {
+    "tools": ["meos_overview", "meos_activities", "meos_strength", "meos_body"]
+  },
+  "channelConfigs": {
+    "meos": {
+      "label": "MeOS",
+      "description": "MeOS 어시스턴트 채널 설정.",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "description": "MeOS chat Edge Function 주소 (…/functions/v1/chat)"
+          },
+          "token": {
+            "type": "string",
+            "description": "MEOS_NOTE_TOKEN — note 함수와 같은 토큰"
+          },
+          "pollIntervalMs": {
+            "type": "number",
+            "default": 3000,
+            "description": "질문을 확인하는 주기(ms). 짧을수록 반응이 빠르고 요청이 잦다."
+          }
+        }
+      },
+      "uiHints": {
+        "token": { "label": "MeOS 토큰", "sensitive": true },
+        "baseUrl": { "label": "chat 함수 주소" }
+      }
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
