@@ -34,9 +34,12 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 export async function runMeosPoller(params: PollerParams): Promise<void> {
   const { account, abortSignal, log, errLog, setStatus } = params;
-  log(`meos: 폴링 시작 (${account.pollIntervalMs}ms)`);
+  // 주소를 찍어 둔다 — 설정이 틀렸을 때 로그만 보고 바로 알 수 있어야 한다
+  log(`폴링 시작 · ${account.pollIntervalMs}ms · ${account.baseUrl}`);
 
   // 연달아 실패하면 간격을 늘린다. 함수가 죽었을 때 초당 요청을 계속 때리지 않도록.
+  // ⚠️ 너무 길게 잡으면 안 된다 — 대화 기능이라 3분씩 자면 고쳐 놓고도 안 고쳐진 것처럼 보인다.
+  const MAX_BACKOFF_STEPS = 3; // 3s → 최대 24s
   let backoff = 0;
 
   while (!abortSignal?.aborted) {
@@ -61,14 +64,14 @@ export async function runMeosPoller(params: PollerParams): Promise<void> {
         }
       }
     } catch (err) {
-      backoff = Math.min(6, backoff + 1);
-      errLog(`meos: 폴링 실패 (${backoff}회째): ${String(err)}`);
+      backoff = Math.min(MAX_BACKOFF_STEPS, backoff + 1);
+      errLog(`폴링 실패 (연속 ${backoff}회): ${String(err)}`);
       setStatus?.({ accountId: account.accountId, running: true, lastError: String(err) });
     }
     const wait = backoff ? account.pollIntervalMs * 2 ** backoff : account.pollIntervalMs;
     await sleep(wait, abortSignal);
   }
 
-  log("meos: 폴링 종료");
+  log("폴링 종료");
   setStatus?.({ accountId: account.accountId, running: false });
 }
