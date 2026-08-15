@@ -63,12 +63,30 @@ Deno.serve(async (req) => {
 
 /**
  * 누구 데이터를 동기화할지 정한다.
- * 앱에서 부르면 그 사용자의 JWT 가 온다. cron/CLI 는 service_role 키로 오는데 그건 사용자
- * 토큰이 아니므로 가입된 첫 사용자로 넘어간다 (1인용 앱 전제).
+ *
+ * 앱에서 부르면 그 사용자의 JWT 가 오므로 **로그인한 계정** 그대로다 — 여기는 문제가 없다.
+ * 문제는 세션이 없는 호출(cron·CLI 의 service_role)이다.
+ *
+ * ⚠️ 예전엔 그때 `listUsers(1건)` 로 "첫 사용자" 를 집었다. 계정이 둘이 되자
+ *    (앱은 A 로 쓰는데 B 가 먼저 잡힘) **cron 이 몇 주 동안 B 에 데이터를 쌓았다.**
+ *    listUsers 의 순서는 가입 순서도 아니라 어느 쪽이 잡힐지 예측할 수도 없다.
+ *    그래서 추측하지 않는다:
+ *      MEOS_USER_ID 시크릿 → 가장 최근 활동의 주인(=실제로 쓰는 계정) → 첫 사용자
  */
 async function resolveUserId(req: Request, admin: SupabaseClient): Promise<{ userId: string; via: 'jwt' | 'service' }> {
   const who = whoIs(req)
   if (who.via === 'user' && who.userId) return { userId: who.userId, via: 'jwt' }
+
+  const forced = Deno.env.get('MEOS_USER_ID')?.trim()
+  if (forced) return { userId: forced, via: 'service' }
+
+  const { data: act } = await admin
+    .from('activities')
+    .select('user_id')
+    .order('start_date_local', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (act?.user_id) return { userId: act.user_id as string, via: 'service' }
 
   const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 })
   if (error) throw new Error(`사용자 조회 실패: ${error.message}`)

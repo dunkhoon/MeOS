@@ -189,7 +189,10 @@ async function takePending(admin: SupabaseClient, max: number) {
 // ── 에이전트 조회 도구용 데이터 ─────────────────────────────
 async function readData(admin: SupabaseClient, userId: string, kind: string) {
   const days = 28
+  // `started_at` 류(timestamptz)는 진짜 순간이라 ISO 로 비교한다.
   const since = new Date(Date.now() - days * 86400000).toISOString()
+  // `activities.start_date_local` 은 시간대 없는 벽시계(0013)라 날짜로 자른다 —
+  // Z 붙은 ISO 로 비교하면 경계가 9시간 어긋난다.
   const sinceDay = since.slice(0, 10)
 
   if (kind === 'activities') {
@@ -244,7 +247,7 @@ async function readData(admin: SupabaseClient, userId: string, kind: string) {
       .from('activities')
       .select('type, start_date_local, distance_m, moving_time_s, calories, training_load')
       .eq('user_id', userId)
-      .gte('start_date_local', since),
+      .gte('start_date_local', sinceDay),
     admin
       .from('wellness')
       .select('day, ctl, atl, hrv, resting_hr, sleep_secs, sleep_score, weight')
