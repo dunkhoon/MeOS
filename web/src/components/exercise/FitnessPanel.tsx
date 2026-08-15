@@ -3,6 +3,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { fitnessSeries, type Wellness } from '../../lib/exercise'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { ink } from '../../lib/color'
+import { LatestValues, chartMargin, deltaText, pinnedTooltipProps, useCoarsePointer } from '../../lib/chart'
 
 type MetricKey = 'fitness' | 'fatigue' | 'form'
 
@@ -39,6 +40,11 @@ const METRICS: Metric[] = [
 
 export function FitnessPanel({ wellness }: { wellness: Wellness[] }) {
   const data = fitnessSeries(wellness)
+  const coarse = useCoarsePointer()
+
+  // 오른쪽 끝(=오늘)이 제일 궁금한 값이라 글로도 띄운다 — 터치로 집지 않아도 읽힌다
+  const last = data[data.length - 1]
+  const prev = data[data.length - 2]
 
   // 러닝화는 이제 실제 데이터(Garmin)라 목록이 길어서 별도 전체폭 카드로 뺐다 (SPEC §3.1 변경).
   return (
@@ -47,12 +53,25 @@ export function FitnessPanel({ wellness }: { wellness: Wellness[] }) {
         <p className="muted small">데이터 없음</p>
       ) : (
         <>
+          <LatestValues
+            at={last?.day}
+            items={METRICS.map((m) => ({
+              label: m.label.replace(/\(.*\)/, ''),
+              color: m.color,
+              value: last?.[m.key] != null ? String(last[m.key]) : '-',
+              delta: deltaText(last?.[m.key], prev?.[m.key], '', 0),
+              // 훈련부하는 오르내림 자체가 좋고 나쁨이 아니다 (쌓을 때가 있고 뺄 때가 있다) — 색을 입히지 않는다
+            }))}
+          />
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <LineChart data={data} margin={chartMargin(coarse)}>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="day" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
               <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }} />
+              <Tooltip
+                contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+                {...pinnedTooltipProps(coarse)}
+              />
               {METRICS.map((m) => (
                 <Line
                   key={m.key}

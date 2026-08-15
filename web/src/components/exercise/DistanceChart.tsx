@@ -11,6 +11,7 @@ import {
   type Gran,
 } from '../../lib/exercise'
 import { CollapsibleCard } from '../CollapsibleCard'
+import { chartMargin, pinnedTooltipProps, useCoarsePointer } from '../../lib/chart'
 
 const GRAN_TABS: { key: Gran; label: string }[] = [
   { key: 'week', label: '주간' },
@@ -51,6 +52,7 @@ function DistanceTooltip({ active, payload, label }: TooltipProps<number, string
 export function DistanceChart({ activities, types }: { activities: Activity[]; types: string[] }) {
   const [gran, setGran] = useState<Gran>('week')
   const [mode, setMode] = useState<Mode>('distance')
+  const coarse = useCoarsePointer()
 
   const distData = distanceSeriesByType(activities, gran, types)
   const zoneData = zoneSeries(activities, gran)
@@ -91,11 +93,11 @@ export function DistanceChart({ activities, types }: { activities: Activity[]; t
       {mode === 'distance' ? (
         hasDist ? (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={distData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <BarChart data={distData} margin={chartMargin(coarse)}>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
               <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} />
-              <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} content={<DistanceTooltip />} />
+              <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} content={<DistanceTooltip />} {...pinnedTooltipProps(coarse)} />
               {types.map((t) => (
                 <Bar key={t} dataKey={t} stackId="dist" fill={typeColor(t)} />
               ))}
@@ -106,11 +108,11 @@ export function DistanceChart({ activities, types }: { activities: Activity[]; t
         )
       ) : hasZone ? (
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={zoneData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+          <BarChart data={zoneData} margin={chartMargin(coarse)}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
             <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} domain={[0, 100]} unit="%" />
-            <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={tooltipStyle} formatter={(v: number, name: string) => [`${v}%`, name]} />
+            <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={tooltipStyle} formatter={(v: number, name: string) => [`${v}%`, name]} {...pinnedTooltipProps(coarse)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {HR_ZONES.map((z) => (
               <Bar key={z} dataKey={z} stackId="zone" fill={ZONE_COLORS[z]} />

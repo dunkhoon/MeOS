@@ -17,6 +17,7 @@ import { StrengthCalendar } from './StrengthCalendar'
 import { ExerciseManager } from './ExerciseManager'
 import { AskButton } from '../AskButton'
 import { errMsg } from '../../lib/exercise'
+import { LatestValues, chartMargin, deltaText, lastTwo, pinnedTooltipProps, useCoarsePointer } from '../../lib/chart'
 import {
   CATEGORY_COLOR,
   CATEGORY_LABEL,
@@ -186,6 +187,7 @@ export function StrengthTab() {
 }
 
 function VolumeChart({ sessions }: { sessions: StrengthSession[] }) {
+  const coarse = useCoarsePointer()
   const data = weeklyVolume(sessions, 12)
   const has = data.some((d) => d.volume > 0 || d.sets > 0)
   return (
@@ -199,7 +201,7 @@ function VolumeChart({ sessions }: { sessions: StrengthSession[] }) {
     >
       {has ? (
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+          <BarChart data={data} margin={chartMargin(coarse)}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
             <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} />
@@ -207,6 +209,7 @@ function VolumeChart({ sessions }: { sessions: StrengthSession[] }) {
               cursor={{ fill: 'rgba(255,255,255,0.04)' }}
               contentStyle={tooltipStyle}
               formatter={(v: number, name: string) => [name === '볼륨' ? `${v.toLocaleString()} kg` : `${v} 세트`, name]}
+              {...pinnedTooltipProps(coarse)}
             />
             <Bar dataKey="volume" name="볼륨" fill="var(--h-purple)" />
           </BarChart>
@@ -219,6 +222,7 @@ function VolumeChart({ sessions }: { sessions: StrengthSession[] }) {
 }
 
 function ExerciseProgressCard({ sessions }: { sessions: StrengthSession[] }) {
+  const coarse = useCoarsePointer()
   const names = useMemo(() => {
     const set = new Set<string>()
     for (const s of sessions) for (const x of s.strength_sets) set.add(x.exercise_name)
@@ -228,6 +232,9 @@ function ExerciseProgressCard({ sessions }: { sessions: StrengthSession[] }) {
   const name = picked || names[0] || ''
   const data = name ? exerciseProgress(sessions, name) : []
   const has = data.some((d) => d.weight != null || d.est1rm != null)
+  // 값이 있는 마지막 두 지점 — 중간에 그 종목을 안 한 날이 있어도 건너뛴다
+  const topWeight = lastTwo(data, (d) => d.weight)
+  const top1rm = lastTwo(data, (d) => d.est1rm)
 
   return (
     <CollapsibleCard
@@ -246,16 +253,38 @@ function ExerciseProgressCard({ sessions }: { sessions: StrengthSession[] }) {
       }
     >
       {has ? (
+        <>
+        {/* 오른쪽 끝(=최근 기록)이 제일 궁금한 값이다. 이 카드에만 있는 값이라 글로도 띄운다. */}
+        <LatestValues
+          at={data[data.length - 1]?.day}
+          items={[
+            {
+              label: '최고 중량',
+              color: 'var(--h-blue)',
+              value: topWeight.cur != null ? `${topWeight.cur}kg` : '-',
+              delta: deltaText(topWeight.cur, topWeight.prev, 'kg'),
+              good: (topWeight.cur ?? 0) >= (topWeight.prev ?? 0),
+            },
+            {
+              label: '추정 1RM',
+              color: 'var(--h-orange)',
+              value: top1rm.cur != null ? `${top1rm.cur}kg` : '-',
+              delta: deltaText(top1rm.cur, top1rm.prev, 'kg'),
+              good: (top1rm.cur ?? 0) >= (top1rm.prev ?? 0),
+            },
+          ]}
+        />
         <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+          <LineChart data={data} margin={chartMargin(coarse)}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="day" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={12} />
             <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} unit="kg" />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [`${v} kg`, n]} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [`${v} kg`, n]} {...pinnedTooltipProps(coarse)} />
             <Line type="monotone" dataKey="weight" name="최고 중량" stroke="var(--h-blue)" dot={false} connectNulls />
             <Line type="monotone" dataKey="est1rm" name="추정 1RM" stroke="var(--h-orange)" dot={false} connectNulls />
           </LineChart>
         </ResponsiveContainer>
+        </>
       ) : (
         <p className="muted small">기록이 쌓이면 추이가 보입니다</p>
       )}

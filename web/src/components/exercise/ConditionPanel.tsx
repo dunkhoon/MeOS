@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { conditionSeries, conditionSummary, type Wellness } from '../../lib/exercise'
 import { CollapsibleCard } from '../CollapsibleCard'
+import { chartMargin, pinnedTooltipProps, useCoarsePointer } from '../../lib/chart'
 
 type MetricKey = 'restingHr' | 'hrv' | 'sleep' | 'sleepScore' | 'weight'
 
@@ -16,6 +17,7 @@ const METRICS: Record<MetricKey, { label: string; unit: string; color: string; d
 
 export function ConditionPanel({ wellness }: { wellness: Wellness[] }) {
   const [metric, setMetric] = useState<MetricKey>('hrv')
+  const coarse = useCoarsePointer()
   const s = conditionSummary(wellness)
   const series = conditionSeries(wellness)
   const active = METRICS[metric]
@@ -49,13 +51,14 @@ export function ConditionPanel({ wellness }: { wellness: Wellness[] }) {
 
       {hasData ? (
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={series} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+          <LineChart data={series} margin={chartMargin(coarse)}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="day" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
             <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} domain={active.domain ?? ['auto', 'auto']} />
             <Tooltip
               contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
               formatter={(v: number) => [`${v} ${active.unit}`, active.label]}
+              {...pinnedTooltipProps(coarse)}
             />
             <Line type="monotone" dataKey={metric} name={active.label} stroke={active.color} dot={false} strokeWidth={2} connectNulls />
           </LineChart>

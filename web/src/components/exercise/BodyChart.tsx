@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { bodySeries, type BodyMeasurement } from '../../lib/body'
+import { chartMargin, pinnedTooltipProps, useCoarsePointer } from '../../lib/chart'
 
 // 체성분 추이. 체중과 체지방률은 단위가 달라 한 축에 겹치면 둘 다 안 읽힌다 —
 // 왼쪽은 kg, 오른쪽은 % 로 축을 나눈다.
@@ -10,6 +11,7 @@ type Mode = 'composition' | 'segments'
 
 export function BodyChart({ measurements }: { measurements: BodyMeasurement[] }) {
   const [mode, setMode] = useState<Mode>('composition')
+  const coarse = useCoarsePointer()
   const data = bodySeries(measurements)
   const has = data.length >= 2
 
@@ -49,7 +51,7 @@ export function BodyChart({ measurements }: { measurements: BodyMeasurement[] })
         <Segments m={last} />
       ) : has ? (
         <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={data} margin={{ top: 8, right: 0, left: -16, bottom: 0 }}>
+          <LineChart data={data} margin={chartMargin(coarse)}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="day" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval="preserveStartEnd" minTickGap={16} />
             <YAxis yAxisId="kg" tick={{ fill: 'var(--muted)', fontSize: 11 }} domain={['dataMin - 2', 'dataMax + 2']} />
@@ -60,7 +62,7 @@ export function BodyChart({ measurements }: { measurements: BodyMeasurement[] })
               domain={['dataMin - 2', 'dataMax + 2']}
               unit="%"
             />
-            <Tooltip contentStyle={tooltipStyle} />
+            <Tooltip contentStyle={tooltipStyle} {...pinnedTooltipProps(coarse)} />
             <Line yAxisId="kg" type="monotone" dataKey="weight_kg" name="체중" stroke="var(--h-blue)" dot={false} connectNulls />
             <Line
               yAxisId="kg"
