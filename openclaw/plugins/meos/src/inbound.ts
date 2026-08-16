@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { postAnswer, postFailure, type MeosAccount, type MeosPendingMessage } from "./client.js";
 import { CHANNEL_ID } from "./config.js";
 
@@ -58,10 +62,48 @@ function bodyWithContext(message: MeosPendingMessage): string {
   return `[MeOS 화면 맥락]\n${rendered}\n\n${message.content}`;
 }
 
+/** 화면이 사진을 딸려 보냈나 — 영양정보표 판독이 그렇다 */
+function imageUrlOf(context: unknown): string | null {
+  if (!context || typeof context !== "object") return null;
+  const url = (context as { imageUrl?: unknown }).imageUrl;
+  return typeof url === "string" && /^https?:\/\//.test(url) ? url : null;
+}
+
+/**
+ * 서명 URL 을 받아 임시 파일로 떨군다.
+ *
+ * ⚠️ URL 을 글로만 넘기면 에이전트는 **글자만 본다.** 실제로 이미지를 보려면 파일이어야 한다.
+ *    (번들 채널들도 받은 미디어를 내려받아 `MediaPath` 로 넘긴다)
+ *    Supabase 서명 URL 은 30분짜리라 지금 받아 두면 된다.
+ */
+async function downloadToTemp(url: string): Promise<{ filePath: string; dir: string; mime: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`사진을 받지 못했습니다 (HTTP ${res.status})`);
+  const mime = res.headers.get("content-type") || "image/jpeg";
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+  const dir = await mkdtemp(path.join(tmpdir(), "meos-food-"));
+  const filePath = path.join(dir, `label.${ext}`);
+  await writeFile(filePath, Buffer.from(await res.arrayBuffer()));
+  return { filePath, dir, mime };
+}
+
 export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMessage): Promise<void> {
   const { account, cfg, channelRuntime } = deps;
   // 답을 되돌릴 대상은 "대화" 다. 대화마다 세션이 갈리므로 새 대화 = 새 맥락이 된다.
   const to = message.thread_id;
+
+  // 사진이 딸려 왔으면 받아서 파일로 붙인다 (URL 글자만으로는 에이전트가 못 본다)
+  let media: { filePath: string; dir: string; mime: string } | null = null;
+  const imageUrl = imageUrlOf(message.context);
+  if (imageUrl) {
+    try {
+      media = await downloadToTemp(imageUrl);
+    } catch (err) {
+      deps.errLog(`사진 내려받기 실패: ${String(err)}`);
+      await postFailure(account, { messageId: message.id, error: `사진을 읽지 못했습니다: ${String(err)}` });
+      return;
+    }
+  }
 
   const ctx: Record<string, unknown> = {
     Body: bodyWithContext(message),
@@ -77,6 +119,13 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
     // 이 채널에 들어오는 유일한 길이 공유 토큰이다 — 여기까지 온 메시지는 곧 운영자 본인이다.
     CommandAuthorized: true,
     CommandBody: message.content.trim(),
+    ...(media ? { MediaPath: media.filePath, MediaType: media.mime } : {}),
+  };
+
+  // 어디로 빠져나가든 임시 파일은 지운다
+  const cleanup = async () => {
+    if (media) await rm(media.dir, { recursive: true, force: true }).catch(() => {});
+    media = null;
   };
 
   const route = channelRuntime.routing.resolveAgentRoute({
@@ -86,6 +135,7 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
     peer: { kind: "direct", id: to },
   });
   if (!route?.agentId) {
+    await cleanup();
     await postFailure(account, { messageId: message.id, error: "에이전트를 찾지 못했습니다 (agent route 없음)." });
     return;
   }
@@ -141,11 +191,13 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
         }),
     });
   } catch (err) {
+    await cleanup();
     await postFailure(account, { messageId: message.id, error: String(err).slice(0, 2000) });
     return;
   } finally {
     markDispatchIdle();
   }
+  await cleanup();
 
   const answer = chunks.join("\n\n").trim();
   if (!answer) {

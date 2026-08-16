@@ -5,7 +5,6 @@ import { fetchSessions, type StrengthSession } from '../../lib/strength'
 import {
   fetchGoals,
   fetchMeasurements,
-  fetchNutrition,
   fetchSettings,
   heightCm,
   latest,
@@ -13,19 +12,20 @@ import {
   type BodyGoal,
   type BodyMeasurement,
   type BodySettings,
-  type NutritionLog,
 } from '../../lib/body'
 import { buildPlan } from '../../lib/coach'
 import { BodyGoals } from './BodyGoals'
 import { BodyCoach } from './BodyCoach'
-import { BodyNutrition } from './BodyNutrition'
+import { FoodDiary } from './FoodDiary'
+import { dailyLogs, fetchEntries, type FoodEntry } from '../../lib/food'
 import { BodyChart } from './BodyChart'
 import { BodyMeasurements } from './BodyMeasurements'
 
 export function BodyTab({ syncNonce }: { syncNonce: number }) {
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([])
   const [goals, setGoals] = useState<BodyGoal[]>([])
-  const [nutrition, setNutrition] = useState<NutritionLog[]>([])
+  // 섭취는 이제 음식 일지에서 나온다 (0014). 코칭에는 일별 합계로 줄여 넘긴다.
+  const [foodEntries, setFoodEntries] = useState<FoodEntry[]>([])
   const [settings, setSettings] = useState<BodySettings>({
     height_cm: null,
     sex: null,
@@ -45,14 +45,14 @@ export function BodyTab({ syncNonce }: { syncNonce: number }) {
       const [ms, gs, ns, st, acts, ss] = await Promise.all([
         fetchMeasurements(),
         fetchGoals(),
-        fetchNutrition(since),
+        fetchEntries(since, dayjs().format('YYYY-MM-DD')),
         fetchSettings(),
         fetchActivities(since),
         fetchSessions(since),
       ])
       setMeasurements(ms)
       setGoals(gs)
-      setNutrition(ns)
+      setFoodEntries(ns)
       setSettings(st)
       setActivities(acts)
       setSessions(ss)
@@ -68,8 +68,8 @@ export function BodyTab({ syncNonce }: { syncNonce: number }) {
   }, [load, syncNonce])
 
   const plan = useMemo(
-    () => buildPlan({ measurements, goals, activities, sessions, nutrition, settings }),
-    [measurements, goals, activities, sessions, nutrition, settings],
+    () => buildPlan({ measurements, goals, activities, sessions, nutrition: dailyLogs(foodEntries), settings }),
+    [measurements, goals, activities, sessions, foodEntries, settings],
   )
 
   if (loading) return <p className="muted">체형 데이터 불러오는 중…</p>
@@ -133,8 +133,8 @@ export function BodyTab({ syncNonce }: { syncNonce: number }) {
       <div className="ex-stack">
         <BodyGoals goals={goals} measurements={measurements} onChanged={() => void load()} />
         <BodyCoach plan={plan} />
+        <FoodDiary plan={plan} onChanged={() => void load()} />
         <div className="ex-grid">
-          <BodyNutrition nutrition={nutrition} plan={plan} onChanged={() => void load()} />
           <BodyChart measurements={measurements} />
         </div>
         <BodyMeasurements

@@ -5482,3 +5482,270 @@ code {
 .ad-note-empty .card-title {
   margin-bottom: 2px;
 }
+
+/* ══ 음식 기록 ═════════════════════════════════════════════ */
+
+.fd-daynav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── 하루 합계 ── */
+.fd-summary {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  padding-bottom: 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.fd-sum-kcal {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.fd-macro {
+  flex: 1;
+  min-width: 180px;
+}
+/* 탄·단·지는 **칼로리** 비율이다 (그램으로 재면 지방이 과소평가된다) */
+.fd-macro-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg-elev);
+}
+.fd-macro-seg {
+  height: 100%;
+}
+.fd-macro-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 6px 0 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.fd-macro-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+}
+
+/* ── 끼니 ── */
+.fd-meal {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.fd-meal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.fd-meal-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.fd-meal-name i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.fd-meal-add {
+  margin-left: auto;
+}
+.fd-meal-empty {
+  margin: 4px 0 0;
+}
+.fd-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0 0;
+  font-size: 13px;
+}
+.fd-entry-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fd-entry-amt {
+  white-space: nowrap;
+}
+.fd-entry-kcal {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
+}
+.fd-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+/* ── 고르기 시트 ── */
+.fd-picklist {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 10px 0;
+}
+.fd-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  padding: 10px 4px;
+  cursor: pointer;
+}
+.fd-pick:hover {
+  background: var(--bg-elev);
+}
+.fd-pick-name {
+  font-size: 14px;
+}
+.fd-pick-sel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0 12px;
+  font-size: 14px;
+}
+/* 담기 전에 얼마나 되는지 — 단위를 잘못 골랐을 때 여기서 걸린다 */
+.fd-preview {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 4px 0 14px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 음식 등록·편집 ── */
+.fd-sheet {
+  max-width: 640px;
+}
+.fd-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.fd-ai {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.fd-ai-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
+  margin-bottom: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.fd-ai-hint {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+}
+.fd-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.fd-grow {
+  flex: 2 1 180px;
+}
+.fd-narrow {
+  flex: 1 1 92px;
+  min-width: 92px;
+}
+.fd-basis {
+  margin: 0 0 10px;
+}
+.fd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.fd-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+/* ── 내 음식 목록 ── */
+.fd-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.fd-list-row.archived .fd-list-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.fd-list-name {
+  flex: 1;
+  min-width: 120px;
+}
+
+@media (max-width: 768px) {
+  .fd-sum-kcal {
+    font-size: 26px;
+  }
+  /* 폰에서 항목 한 줄에 이름·수량·칼로리가 다 안 들어간다 — 이름을 위로 */
+  .fd-entry {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    grid-template-areas:
+      'name name name'
+      'amt  kcal del';
+    gap: 2px 8px;
+  }
+  .fd-entry-name {
+    grid-area: name;
+    white-space: normal;
+  }
+  .fd-entry-amt {
+    grid-area: amt;
+  }
+  .fd-entry-kcal {
+    grid-area: kcal;
+  }
+  .fd-entry > .link-btn {
+    grid-area: del;
+  }
+}
