@@ -13,6 +13,7 @@ import {
   fetchActivities,
   fetchRaces,
   fetchWellness,
+  fetchWorkouts,
   hms,
   km,
   paceStr,
@@ -21,6 +22,7 @@ import {
   type Activity,
   type Race,
   type Wellness,
+  type Workout,
 } from '../../lib/exercise'
 import { DistanceChart } from './DistanceChart'
 import { FitnessPanel } from './FitnessPanel'
@@ -36,6 +38,8 @@ export function ActivityTab({ syncNonce }: { syncNonce: number }) {
   const [activities, setActivities] = useState<Activity[]>([])
   const [wellness, setWellness] = useState<Wellness[]>([])
   const [races, setRaces] = useState<Race[]>([])
+  // 훈련 계획 — 캘린더가 '아직 안 한 것' 만 띄운다
+  const [workouts, setWorkouts] = useState<Workout[]>([])
   // 근력 탭에서 직접 기록한 세션과 겹치는 WeightTraining 은 여기서 감춘다.
   // 같은 운동이 "활동 1건 + 근력 세션 1건" 으로 두 번 세이면 주간 횟수가 부풀려진다.
   const [hidden, setHidden] = useState<Set<string>>(new Set())
@@ -47,16 +51,21 @@ export function ActivityTab({ syncNonce }: { syncNonce: number }) {
   const load = useCallback(async () => {
     const actSince = dayjs().subtract(5, 'year').format('YYYY-MM-DD')
     const wellSince = dayjs().subtract(120, 'day').format('YYYY-MM-DD')
-    const [a, w, r, sr] = await Promise.all([
+    // 계획은 앞뒤로 넉넉히 — 캘린더에서 지난달·다음달을 넘겨 볼 수 있어야 한다
+    const planFrom = dayjs().subtract(1, 'year').format('YYYY-MM-DD')
+    const planTo = dayjs().add(120, 'day').format('YYYY-MM-DD')
+    const [a, w, r, sr, wk] = await Promise.all([
       fetchActivities(actSince),
       fetchWellness(wellSince),
       fetchRaces(),
       fetchSessionRanges(actSince),
+      fetchWorkouts(planFrom, planTo),
     ])
     setActivities(a)
     setWellness(w)
     setRaces(r)
     setHidden(matchedActivityIds(sr, a))
+    setWorkouts(wk)
   }, [])
 
   const runLoad = useCallback(async () => {
@@ -204,7 +213,7 @@ export function ActivityTab({ syncNonce }: { syncNonce: number }) {
 
       {/* 세로로 쌓이는 블록들 — 카드 자체엔 바깥 여백이 없어서 여기서 한 번에 준다 */}
       <div className="ex-stack">
-        <TrainingCalendar activities={filtered} />
+        <TrainingCalendar activities={filtered} workouts={workouts} />
 
         <div className="ex-grid">
           <DistanceChart activities={filtered} types={selectedTypes} />

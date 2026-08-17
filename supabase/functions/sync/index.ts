@@ -199,6 +199,46 @@ async function runSync(supabase: SupabaseClient, userId: string, full: boolean, 
     if (error) throw error
   }
 
+  // ── 훈련 계획 (WORKOUT 이벤트) ──
+  //
+  // ⚠️ upsert 가 아니라 **창을 지우고 다시 넣는다.** 계획은 옮기고 지우는 일이 잦은데
+  //    upsert 만 하면 intervals.icu 에서 지운 계획이 우리 쪽에 영원히 남는다.
+  //    (구글 일정도 같은 이유로 같은 방식이다)
+  const planFrom = oldestYmd(now, win.activities)
+  const planTo = ymd(daysFrom(now, 120)) // 앞으로 넉 달치면 캘린더가 볼 만큼은 된다
+  const plans = await icu(`/events?oldest=${planFrom}&newest=${planTo}&category=WORKOUT`)
+  const workoutRows = (plans as any[])
+    .filter((e) => e.start_date_local)
+    .map((e) => ({
+      user_id: userId,
+      external_id: String(e.id),
+      start_date: e.start_date_local.slice(0, 10),
+      type: e.type ?? null,
+      name: e.name ?? null,
+      description: e.description ?? null,
+      target_load: e.icu_training_load ?? e.load_target ?? null,
+      target_time_s: e.moving_time ?? e.time_target ?? null,
+      // 거리 목표가 없는 계획은 0 으로 온다 — 0 은 "목표 없음" 이지 "0km" 가 아니다
+      target_distance_m: e.distance || e.distance_target || null,
+      // 이 값이 채워지면 계획을 소화한 것이다. 그날 활동이 있느냐와는 다르다.
+      paired_activity_id: e.paired_activity_id ? String(e.paired_activity_id) : null,
+      workout_doc: e.workout_doc ?? null,
+      raw: e,
+    }))
+  {
+    const { error: delErr } = await supabase
+      .from('workouts')
+      .delete()
+      .eq('user_id', userId)
+      .gte('start_date', planFrom)
+      .lte('start_date', planTo)
+    if (delErr) throw delErr
+    if (workoutRows.length) {
+      const { error } = await supabase.from('workouts').insert(workoutRows)
+      if (error) throw error
+    }
+  }
+
   // ── 구글 캘린더 (시크릿이 있을 때만) ──
   let googleEvents = 0
   const clientId = Deno.env.get('GOOGLE_CLIENT_ID')
@@ -216,6 +256,7 @@ async function runSync(supabase: SupabaseClient, userId: string, full: boolean, 
     activities: activityRows.length,
     wellness: wellnessRows.length,
     races: raceRows.length,
+    workouts: workoutRows.length,
     events: googleEvents,
     shoes: shoes.count,
     shoesError: shoes.error,

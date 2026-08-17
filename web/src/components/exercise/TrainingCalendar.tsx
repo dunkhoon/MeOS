@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
-import { km, type Activity } from '../../lib/exercise'
+import { ZONE_COLORS, hms, km, pendingWorkouts, workoutTargets, type Activity, type HrZone, type Workout } from '../../lib/exercise'
 import { SESSION_COLOR, SESSION_LABEL, sessionKind, type SessionKind } from '../../lib/session'
 
 // 월간 훈련 캘린더 — 한 셀에 그날 훈련(거리 + 세션 종류)을 보여주고, 누르면 상세로 간다.
@@ -32,9 +32,23 @@ function readMonth(): dayjs.Dayjs {
   return dayjs().startOf('month')
 }
 
-export function TrainingCalendar({ activities }: { activities: Activity[] }) {
+export function TrainingCalendar({ activities, workouts = [] }: { activities: Activity[]; workouts?: Workout[] }) {
   const navigate = useNavigate()
   const [month, setMonth] = useState(readMonth)
+  /** 눌러서 펼친 계획 */
+  const [openPlan, setOpenPlan] = useState<Workout | null>(null)
+
+  // 아직 소화 안 한 계획만 날짜별로. 기준은 paired_activity_id 다 —
+  // 계획과 다른 걸 뛴 날에는 계획이 그대로 남아 있어야 한다.
+  const planByDay = useMemo(() => {
+    const m = new Map<string, Workout[]>()
+    for (const w of pendingWorkouts(workouts)) {
+      const list = m.get(w.start_date) ?? []
+      list.push(w)
+      m.set(w.start_date, list)
+    }
+    return m
+  }, [workouts])
 
   useEffect(() => {
     try {
@@ -140,9 +154,24 @@ export function TrainingCalendar({ activities }: { activities: Activity[] }) {
               style={list.length ? ({ '--sess': SESSION_COLOR[list[0].kind] } as CSSProperties) : undefined}
             >
               <span className="tcal-day">{d.date()}</span>
-              {list.length === 0 ? (
+              {/* 계획은 실제 기록과 달라 보여야 한다 — 점선 테두리 */}
+              {(planByDay.get(key) ?? []).map((w) => (
+                <button
+                  key={w.id}
+                  type="button"
+                  className="tcal-plan"
+                  title={`계획: ${w.name ?? ''}${workoutTargets(w) ? ` — ${workoutTargets(w)}` : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setOpenPlan(w)
+                  }}
+                >
+                  {planLabel(w)}
+                </button>
+              ))}
+              {list.length === 0 && !planByDay.has(key) ? (
                 <span className="tcal-none">—</span>
-              ) : (
+              ) : list.length === 0 ? null : (
                 <>
                   <span className="tcal-km">{km(total).toFixed(1)}</span>
                   <div className="tcal-acts">
@@ -173,8 +202,87 @@ export function TrainingCalendar({ activities }: { activities: Activity[] }) {
             {SESSION_LABEL[k]}
           </span>
         ))}
+        <span className="tcal-lg">
+          <i className="tcal-lg-plan" />
+          계획 (아직 안 함)
+        </span>
         <span className="muted small tcal-note">세션 종류는 활동 이름에서 추정합니다</span>
       </div>
+
+      {openPlan && <PlanSheet w={openPlan} onClose={() => setOpenPlan(null)} />}
     </CollapsibleCard>
+  )
+}
+
+/**
+ * 칸에 들어갈 짧은 이름.
+ * 계획 이름은 "NSM D+106 SubT 1km x6 Controlled" 처럼 길어서 그대로는 칸을 넘긴다.
+ * 앞의 코드(NSM D+106)를 떼면 남는 게 곧 그날의 핵심이다.
+ */
+function planLabel(w: Workout): string {
+  const raw = (w.name ?? '계획').trim()
+  const stripped = raw.replace(/^NSM\s+D[+-]?\d+\s*/i, '').trim()
+  return stripped || raw
+}
+
+/** 계획 상세 — 목표치와 본문, 구간이 있으면 구간까지 */
+function PlanSheet({ w, onClose }: { w: Workout; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const targets = workoutTargets(w)
+  const steps = w.workout_doc?.steps ?? []
+  const zones = (w.workout_doc?.zoneTimes ?? []).filter((z) => z.secs > 0)
+
+  return (
+    <div className="st-sheet-back" onClick={onClose}>
+      <div className="st-sheet fd-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="훈련 계획">
+        <div className="st-sheet-head">
+          <span>훈련 계획 · {dayjs(w.start_date).format('M월 D일 (ddd)')}</span>
+          <button className="link-btn small" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+
+        <h3 className="plan-name">{w.name ?? '(이름 없음)'}</h3>
+        {targets && <p className="plan-targets">{targets}</p>}
+
+        {/* 본문은 여러 줄 평문이라 줄바꿈을 살려야 읽힌다 */}
+        {w.description && <pre className="plan-desc">{w.description}</pre>}
+
+        {zones.length > 0 && (
+          <div className="plan-zones">
+            {zones.map((z) => (
+              <span key={z.id} className="plan-zone">
+                <i style={{ background: ZONE_COLORS[z.id as HrZone] ?? 'var(--muted)' }} />
+                {z.id} {hms(z.secs)}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {steps.length > 0 && (
+          <ol className="plan-steps">
+            {steps.map((s, i) => (
+              <li key={i}>
+                <span className="plan-step-dur">{s.duration ? hms(s.duration) : s.distance ? `${km(s.distance)}km` : '-'}</span>
+                <span className="muted">
+                  {s.hr?.value != null ? `HR ${s.hr.units === 'hr_zone' ? `Z${s.hr.value}` : s.hr.value}` : ''}
+                  {s.power?.value != null ? ` · 파워 ${s.power.value}` : ''}
+                  {s.text ? ` · ${s.text}` : ''}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        <p className="muted small">
+          intervals.icu 에서 계획한 내용입니다. 이 계획에 활동이 연결되면 캘린더에서 사라집니다.
+        </p>
+      </div>
+    </div>
   )
 }

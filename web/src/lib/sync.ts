@@ -12,6 +12,7 @@ export type SyncResult = {
   activities: number
   wellness: number
   races: number
+  workouts: number
   events: number
   /** 러닝화 켤레 수. null 이면 연동 안 함 또는 최근에 이미 받아 건너뜀 */
   shoes: number | null

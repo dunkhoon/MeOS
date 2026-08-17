@@ -5757,3 +5757,103 @@ code {
   border-color: var(--danger);
   color: var(--ink-red);
 }
+
+/* ── 훈련 계획 (캘린더 안) ──
+   실제 기록과 헷갈리면 안 된다 — 채우지 않고 점선 테두리로만 그린다.
+   "아직 안 한 것" 이라는 뜻이 모양에서 읽혀야 한다. */
+.tcal-plan {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 2px 5px;
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 5px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  /* 계획 이름이 길다 — 두 줄까지 보이고 그 아래는 자른다 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tcal-plan:hover {
+  border-color: var(--accent);
+  color: var(--ink-accent);
+}
+.tcal-lg-plan {
+  border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  background: transparent !important;
+}
+
+/* ── 계획 상세 ── */
+.plan-name {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.plan-targets {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--ink-accent);
+  font-variant-numeric: tabular-nums;
+}
+/* 계획 본문은 여러 줄 평문이다 — 줄바꿈을 살려야 읽힌다 */
+.plan-desc {
+  margin: 0 0 14px;
+  padding: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.plan-zones {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.plan-zone {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.plan-zone i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.plan-steps {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  font-size: 13px;
+}
+.plan-steps li {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.plan-step-dur {
+  min-width: 72px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  /* 폰에서 칸이 작아 계획 이름은 한 줄만 */
+  .tcal-plan {
+    -webkit-line-clamp: 1;
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+}

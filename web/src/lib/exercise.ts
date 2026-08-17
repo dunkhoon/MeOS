@@ -378,3 +378,69 @@ export function byType(activities: Activity[]): TypeStat[] {
     .map((s) => ({ ...s, km: Math.round(s.km * 10) / 10 }))
     .sort((a, b) => b.count - a.count)
 }
+
+// ── 훈련 계획 (intervals.icu WORKOUT 이벤트) ──────────────
+export interface Workout {
+  id: string
+  external_id: string
+  start_date: string
+  type: string | null
+  name: string | null
+  description: string | null
+  target_load: number | null
+  target_time_s: number | null
+  target_distance_m: number | null
+  /** 값이 있으면 이 계획을 소화한 것. "그날 활동이 있느냐" 와는 다르다. */
+  paired_activity_id: string | null
+  workout_doc: WorkoutDoc | null
+}
+
+export interface WorkoutStep {
+  duration?: number
+  distance?: number
+  hr?: { units?: string; value?: number; start?: number; end?: number }
+  power?: { units?: string; value?: number }
+  text?: string
+  reps?: number
+  steps?: WorkoutStep[]
+}
+
+export interface WorkoutDoc {
+  steps?: WorkoutStep[]
+  duration?: number
+  distance?: number
+  description?: string
+  zoneTimes?: { id: string; secs: number }[]
+}
+
+export async function fetchWorkouts(fromDay: string, toDay: string): Promise<Workout[]> {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select(
+      'id, external_id, start_date, type, name, description, target_load, target_time_s, target_distance_m, paired_activity_id, workout_doc',
+    )
+    .gte('start_date', fromDay)
+    .lte('start_date', toDay)
+    .order('start_date', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Workout[]
+}
+
+/**
+ * 캘린더에 계획으로 띄울 것만.
+ *
+ * ⚠️ 기준은 **`paired_activity_id`** 다. "그날 활동이 있으면 끝난 것" 으로 보면 안 된다 —
+ *    계획과 다른 걸 뛴 날에는 계획이 그대로 남아 있어야 한다.
+ */
+export function pendingWorkouts(workouts: Workout[]): Workout[] {
+  return workouts.filter((w) => !w.paired_activity_id)
+}
+
+/** 계획 목표를 한 줄로 — "1h45m · 부하 64 · 6.0km" */
+export function workoutTargets(w: Workout): string {
+  const out: string[] = []
+  if (w.target_time_s) out.push(hms(w.target_time_s))
+  if (w.target_load) out.push(`부하 ${w.target_load}`)
+  if (w.target_distance_m) out.push(`${km(w.target_distance_m)}km`)
+  return out.join(' · ')
+}
