@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { errMsg } from '../../lib/exercise'
+import { isBadNum, numText, parseNum } from '../../lib/num'
 import {
   COMMON_UNITS,
   NUTRIENTS,
@@ -14,6 +15,10 @@ import { askFoodParse, parseFoodReply, photoPrompt, pollReply, textPrompt, uploa
 
 // 음식 등록·편집. AI 가 읽은 결과도 **여기에 채워 놓고** 사람이 확인한 뒤 저장한다.
 // 잘못 읽은 숫자가 그대로 합계에 들어가지 않게 하려는 것이다.
+//
+// ⚠️ 숫자 칸은 **문자열로 들고 있는다.** 파싱한 숫자를 value 로 되돌리면 소수점을 못 찍고
+//    (`"0."` → 0 → 칸이 "0" 으로 다시 그려짐), 잘못된 글자를 치면 "NaN" 이 박혀 고칠 수도 없다.
+//    자세한 이유는 `lib/num.ts` 참고.
 
 const POLL_MS = 2500
 
@@ -21,14 +26,29 @@ const POLL_MS = 2500
 const MAIN: Nutrient[] = ['kcal', 'carb_g', 'protein_g', 'fat_g']
 const MORE: Nutrient[] = NUTRIENTS.filter((n) => !MAIN.includes(n))
 
-const EMPTY: FoodInput = {
-  name: '',
-  brand: null,
-  base_amount: 100,
-  base_unit: 'g',
-  base_grams: null,
-  source: 'manual',
-  note: null,
+/** 편집 중 상태 — 숫자 칸은 전부 문자열이다 */
+type Draft = {
+  name: string
+  brand: string
+  base_amount: string
+  base_unit: string
+  base_grams: string
+  source: string
+  note: string | null
+} & Record<Nutrient, string>
+
+function toDraft(f?: Food | Partial<FoodInput>): Draft {
+  const d = {
+    name: f?.name ?? '',
+    brand: f?.brand ?? '',
+    base_amount: numText(f?.base_amount ?? 100),
+    base_unit: f?.base_unit ?? 'g',
+    base_grams: numText(f?.base_grams),
+    source: f?.source ?? 'manual',
+    note: f?.note ?? null,
+  } as Draft
+  for (const n of NUTRIENTS) d[n] = numText(f?.[n])
+  return d
 }
 
 export function FoodEditor({
@@ -40,7 +60,7 @@ export function FoodEditor({
   onSaved: (f: Food) => void
   onCancel: () => void
 }) {
-  const [f, setF] = useState<FoodInput>(() => (initial ? { ...initial } : { ...EMPTY }))
+  const [d, setD] = useState<Draft>(() => toDraft(initial))
   const [showMore, setShowMore] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,10 +73,13 @@ export function FoodEditor({
   const fileRef = useRef<HTMLInputElement>(null)
   const pending = useRef<{ threadId: string; messageId: string } | null>(null)
 
-  const set = <K extends keyof FoodInput>(k: K, v: FoodInput[K]) => setF((p) => ({ ...p, [k]: v }))
-  const num = (v: string): number | null => (v.trim() === '' ? null : Number(v))
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }))
 
-  // 답이 올 때까지 훑는다. 집 PC 에이전트가 답하는 데 보통 수십 초.
+  // 잘못된 글자가 들어간 칸들 — 저장을 막고 어디가 문제인지 보여 준다
+  const badFields = ([...NUTRIENTS, 'base_amount', 'base_grams'] as const).filter((k) => isBadNum(d[k]))
+  const amount = parseNum(d.base_amount)
+  const canSave = d.name.trim() !== '' && badFields.length === 0 && amount != null && amount > 0
+
   useEffect(() => {
     if (aiState !== 'waiting' || !pending.current) return
     const id = window.setInterval(() => {
@@ -80,7 +103,7 @@ export function FoodEditor({
           return
         }
         // 사람이 고칠 수 있게 채워만 둔다 — 저장은 아래 버튼으로
-        setF((prev) => ({ ...prev, ...parsed.food, source: prev.source === 'manual' ? 'ai-photo' : prev.source }))
+        setD((prev) => ({ ...toDraft({ ...parsed.food }), source: prev.source === 'manual' ? 'ai-photo' : prev.source }))
         setAiOpen(false)
         setAiNote('AI 가 채웠습니다. 숫자를 확인하고 저장하세요.')
       })
@@ -93,8 +116,7 @@ export function FoodEditor({
     setAiState('uploading')
     try {
       const { signedUrl } = await uploadLabelPhoto(file)
-      const p = photoPrompt(signedUrl)
-      pending.current = await askFoodParse(p)
+      pending.current = await askFoodParse(photoPrompt(signedUrl))
       set('source', 'ai-photo')
       setAiState('waiting')
     } catch (e) {
@@ -118,11 +140,21 @@ export function FoodEditor({
   }
 
   async function submit() {
-    if (!f.name.trim()) return
+    if (!canSave) return
     setBusy(true)
     setError(null)
     try {
-      onSaved(await saveFood({ ...f, name: f.name.trim() }, initial?.id))
+      const input: FoodInput = {
+        name: d.name.trim(),
+        brand: d.brand.trim() || null,
+        base_amount: (parseNum(d.base_amount) as number) ?? 100,
+        base_unit: d.base_unit.trim() || 'g',
+        base_grams: (parseNum(d.base_grams) as number | null) ?? null,
+        source: d.source,
+        note: d.note,
+      }
+      for (const n of NUTRIENTS) input[n] = (parseNum(d[n]) as number | null) ?? null
+      onSaved(await saveFood(input, initial?.id))
     } catch (e) {
       setError(errMsg(e))
     } finally {
@@ -131,6 +163,7 @@ export function FoodEditor({
   }
 
   const waiting = aiState !== 'idle'
+  const grams = parseNum(d.base_grams)
 
   return (
     <div className="fd-editor">
@@ -193,60 +226,45 @@ export function FoodEditor({
       <div className="fd-row">
         <label className="bn-field fd-grow">
           <span className="muted small">음식 이름</span>
-          <input className="em-input" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="닭가슴살 스테이크" />
+          <input className="em-input" value={d.name} onChange={(e) => set('name', e.target.value)} placeholder="닭가슴살 스테이크" />
         </label>
         <label className="bn-field">
           <span className="muted small">브랜드</span>
-          <input className="em-input" value={f.brand ?? ''} onChange={(e) => set('brand', e.target.value || null)} placeholder="맛있닭" />
+          <input className="em-input" value={d.brand} onChange={(e) => set('brand', e.target.value)} placeholder="맛있닭" />
         </label>
       </div>
 
       <div className="fd-row">
-        <label className="bn-field fd-narrow">
-          <span className="muted small">기준 수량</span>
-          <input
-            className="em-input"
-            inputMode="decimal"
-            value={String(f.base_amount)}
-            onChange={(e) => set('base_amount', Number(e.target.value) || 0)}
-          />
-        </label>
+        <NumField label="기준 수량" value={d.base_amount} onChange={(v) => set('base_amount', v)} />
         <label className="bn-field fd-narrow">
           <span className="muted small">단위</span>
-          <input
-            className="em-input"
-            list="fd-units"
-            value={f.base_unit}
-            onChange={(e) => set('base_unit', e.target.value)}
-          />
+          <input className="em-input" list="fd-units" value={d.base_unit} onChange={(e) => set('base_unit', e.target.value)} />
           <datalist id="fd-units">
             {COMMON_UNITS.map((u) => (
               <option key={u} value={u} />
             ))}
           </datalist>
         </label>
-        <label className="bn-field fd-narrow">
-          <span className="muted small">그램 환산</span>
-          <input
-            className="em-input"
-            inputMode="decimal"
-            placeholder="모르면 비움"
-            value={f.base_grams == null ? '' : String(f.base_grams)}
-            onChange={(e) => set('base_grams', num(e.target.value))}
-          />
-        </label>
+        <NumField label="그램 환산" value={d.base_grams} onChange={(v) => set('base_grams', v)} placeholder="모르면 비움" />
       </div>
       <p className="muted small fd-basis">
-        아래 영양소는 <b>
-          {f.base_amount}
-          {f.base_unit}
+        아래 영양소는{' '}
+        <b>
+          {d.base_amount || '?'}
+          {d.base_unit}
         </b>{' '}
-        기준입니다{f.base_grams ? ` (= ${f.base_grams}g — g 단위로도 기록 가능)` : ''}.
+        기준입니다{grams ? ` (= ${grams}g — g 단위로도 기록 가능)` : ''}.
       </p>
 
       <div className="fd-grid">
         {MAIN.map((n) => (
-          <NutrientField key={n} n={n} value={f[n]} onChange={(v) => set(n, v)} />
+          <NumField
+            key={n}
+            label={`${NUTRIENT_LABEL[n]} (${NUTRIENT_UNIT[n]})`}
+            value={d[n]}
+            onChange={(v) => set(n, v)}
+            placeholder="—"
+          />
         ))}
       </div>
 
@@ -256,13 +274,23 @@ export function FoodEditor({
       {showMore && (
         <div className="fd-grid">
           {MORE.map((n) => (
-            <NutrientField key={n} n={n} value={f[n]} onChange={(v) => set(n, v)} />
+            <NumField
+              key={n}
+              label={`${NUTRIENT_LABEL[n]} (${NUTRIENT_UNIT[n]})`}
+              value={d[n]}
+              onChange={(v) => set(n, v)}
+              placeholder="—"
+            />
           ))}
         </div>
       )}
 
+      {badFields.length > 0 && (
+        <p className="error small">숫자가 아닌 값이 들어간 칸이 있습니다 — 빨간 칸을 고쳐 주세요.</p>
+      )}
+
       <div className="fd-actions">
-        <button className="sync-btn" disabled={busy || !f.name.trim()} onClick={() => void submit()}>
+        <button className="sync-btn" disabled={busy || !canSave} onClick={() => void submit()}>
           {busy ? '저장 중…' : '저장'}
         </button>
         <button className="link-btn small" onClick={onCancel}>
@@ -273,26 +301,34 @@ export function FoodEditor({
   )
 }
 
-function NutrientField({
-  n,
+/**
+ * 숫자 입력칸.
+ *
+ * 값을 **문자열 그대로** 주고받는다. 파싱은 저장할 때만 한다 — 그래야 "0." 처럼
+ * 아직 덜 친 입력이 살아 있고, 잘못 친 글자도 지우고 다시 칠 수 있다.
+ */
+function NumField({
+  label,
   value,
   onChange,
+  placeholder,
 }: {
-  n: Nutrient
-  value: number | null | undefined
-  onChange: (v: number | null) => void
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
 }) {
+  const bad = isBadNum(value)
   return (
-    <label className="bn-field">
-      <span className="muted small">
-        {NUTRIENT_LABEL[n]} ({NUTRIENT_UNIT[n]})
-      </span>
+    <label className="bn-field fd-narrow">
+      <span className="muted small">{label}</span>
       <input
-        className="em-input"
+        className={`em-input ${bad ? 'bad' : ''}`}
         inputMode="decimal"
-        placeholder="—"
-        value={value == null ? '' : String(value)}
-        onChange={(e) => onChange(e.target.value.trim() === '' ? null : Number(e.target.value))}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-invalid={bad}
       />
     </label>
   )

@@ -665,7 +665,8 @@ function ReviewSetting() {
               max={800000}
               step={10000}
               value={maxDiffChars}
-              onChange={(e) => setMaxDiffChars(Number(e.target.value))}
+              // 빈칸이면 Number('')=0 이라 min 아래로 떨어진다 — 지우는 중일 뿐이니 값을 건드리지 않는다
+              onChange={(e) => e.target.value !== '' && setMaxDiffChars(Number(e.target.value))}
             />
           </label>
           <label>
@@ -675,7 +676,7 @@ function ReviewSetting() {
               min={1}
               max={60}
               value={timeoutMin}
-              onChange={(e) => setTimeoutMin(Number(e.target.value))}
+              onChange={(e) => e.target.value !== '' && setTimeoutMin(Number(e.target.value))}
             />
           </label>
         </div>

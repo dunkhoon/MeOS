@@ -5749,3 +5749,11 @@ code {
     grid-area: del;
   }
 }
+
+/* 숫자 칸에 숫자가 아닌 게 들어갔을 때 — 어디가 문제인지 칸에서 바로 보이게.
+   (값을 NaN 으로 바꿔 버리면 고칠 수도 없다 — lib/num.ts 참고) */
+.em-input.bad,
+.em-input.bad:focus {
+  border-color: var(--danger);
+  color: var(--ink-red);
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { errMsg } from '../../lib/exercise'
+import { parseNum } from '../../lib/num'
 import { FoodEditor } from './FoodEditor'
 import {
   MEALS,
@@ -254,8 +255,10 @@ function PickSheet({
     setAmount(String(f.base_amount))
     setUnit(f.base_unit)
   }
-  const n = Number(amount)
-  const ok = sel && Number.isFinite(n) && n > 0
+  // 파싱은 여기서만 — 입력칸은 원문을 그대로 들고 있어야 소수점을 찍을 수 있다 (lib/num.ts)
+  const parsed = parseNum(amount)
+  const n = typeof parsed === 'number' ? parsed : NaN
+  const ok = sel != null && Number.isFinite(n) && n > 0
   return (
     <div className="st-sheet-back" onClick={onCancel}>
       <div className="st-sheet" onClick={(e) => e.stopPropagation()}>
