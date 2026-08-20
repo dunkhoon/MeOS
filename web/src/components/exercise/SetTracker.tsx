@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CATEGORIES,
   CATEGORY_COLOR,
+  addExercise,
   fmtClock,
   fmtDur,
   readLive,
@@ -17,8 +18,37 @@ import { errMsg } from '../../lib/exercise'
 //
 // 흐름: [운동 시작] → [세트 시작] → 종목·중량 고르기 → 타이머 → [세트 중단] → 횟수 →
 //       (휴식은 그 사이 시간으로 자동) → [다음 세트] … → [운동 종료]
+//
+// 잘못 넣은 값은 그 자리에서 고친다 — 돌고 있는 세트는 종목 이름 옆 「수정」,
+// 이미 기록한 세트는 목록에서 그 줄을 누르면 종목·중량·횟수를 모두 바꿀 수 있다.
+// 아직 서버에 올리기 전이라 로컬 기록만 고치면 된다.
 
 const WEIGHT_STEP = 2.5 // 바벨 원판 최소 증량
+
+/** 고른 종목. id 가 null 인 건 종목 목록과 이어지지 않은, 이름뿐인 기록이다. */
+interface Picked {
+  id: string | null
+  name: string
+}
+
+interface SetDraft {
+  exerciseId: string | null
+  exerciseName: string
+  weightKg: number | null
+  reps: number | null
+}
+
+type SheetState =
+  | { kind: 'pick' }
+  | { kind: 'reps' }
+  | { kind: 'editCurrent' }
+  | { kind: 'editSet'; seq: number }
+  | null
+
+/** 빈 칸은 null(맨몸·미기록). 잘못 친 값은 NaN 으로 남겨 저장 버튼이 막히게 한다. */
+function numOrNull(s: string): number | null {
+  return s.trim() === '' ? null : Number(s)
+}
 
 /** 화면이 꺼지면 타이머를 못 본다. 세션 도는 동안만 잠금을 잡는다. */
 function useWakeLock(active: boolean) {
@@ -55,15 +85,18 @@ export function SetTracker({
   exercises,
   onSaved,
   onLiveChange,
+  onExercisesChanged,
 }: {
   exercises: StrengthExercise[]
   onSaved: () => void
   /** 운동 중일 땐 탭의 나머지(캘린더·통계)를 접어 타이머만 보이게 하려고 알려 준다 */
   onLiveChange: (live: boolean) => void
+  /** 시트에서 종목을 새로 만들었다 — 목록을 다시 읽어 달라고 알린다 */
+  onExercisesChanged: () => void
 }) {
   const [live, setLiveState] = useState<LiveSession | null>(readLive)
   const [now, setNow] = useState(() => Date.now())
-  const [sheet, setSheet] = useState<'pick' | 'reps' | null>(null)
+  const [sheet, setSheet] = useState<SheetState>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -133,6 +166,30 @@ export function SetTracker({
   function beginSet(exerciseId: string | null, exerciseName: string, weightKg: number | null) {
     if (!live) return
     setLive({ ...live, current: { exerciseId, exerciseName, weightKg, startedAt: Date.now() } })
+    setSheet(null)
+  }
+
+  /** 돌고 있는 세트의 종목·중량을 고친다. 시작 시각은 건드리지 않는다 — 세트는 계속 도는 중이다. */
+  function editCurrent(v: SetDraft) {
+    if (!live?.current) return
+    setLive({
+      ...live,
+      current: { ...live.current, exerciseId: v.exerciseId, exerciseName: v.exerciseName, weightKg: v.weightKg },
+    })
+    setSheet(null)
+  }
+
+  /** 이미 기록한 세트를 고친다. 시각(휴식 계산의 근거)은 그대로 두고 내용만 바꾼다. */
+  function editSet(seq: number, v: SetDraft) {
+    if (!live) return
+    setLive({
+      ...live,
+      sets: live.sets.map((s) =>
+        s.seq === seq
+          ? { ...s, exerciseId: v.exerciseId, exerciseName: v.exerciseName, weightKg: v.weightKg, reps: v.reps }
+          : s,
+      ),
+    })
     setSheet(null)
   }
 
@@ -236,6 +293,7 @@ export function SetTracker({
   const lastSet = live.sets[live.sets.length - 1]
   const restFrom = lastSet?.endedAt ?? live.startedAt
   const vol = Math.round(volumeOf(live.sets.map((s) => ({ weight_kg: s.weightKg, reps: s.reps }))))
+  const editingSet = sheet?.kind === 'editSet' ? (live.sets.find((s) => s.seq === sheet.seq) ?? null) : null
 
   return (
     <>
@@ -256,9 +314,12 @@ export function SetTracker({
             <div className="st-what">
               {live.current.exerciseName}
               {live.current.weightKg != null && <b> {live.current.weightKg}kg</b>}
+              <button className="link-btn small st-edit-cur" onClick={() => setSheet({ kind: 'editCurrent' })}>
+                수정
+              </button>
             </div>
             <div className="st-timer">{fmtClock(now - live.current.startedAt)}</div>
-            <button type="button" className="st-big-btn stop" onClick={() => setSheet('reps')}>
+            <button type="button" className="st-big-btn stop" onClick={() => setSheet({ kind: 'reps' })}>
               세트 중단
             </button>
           </div>
@@ -266,24 +327,25 @@ export function SetTracker({
           <div className="st-stage resting">
             <div className="st-what muted">휴식 중</div>
             <div className="st-timer rest">{fmtClock(now - restFrom)}</div>
-            <button type="button" className="st-big-btn go" onClick={() => setSheet('pick')}>
+            <button type="button" className="st-big-btn go" onClick={() => setSheet({ kind: 'pick' })}>
               {live.sets.length === 0 ? '세트 시작' : '다음 세트'}
             </button>
           </div>
         )}
 
-        {live.sets.length > 0 && <LiveSetList live={live} />}
+        {live.sets.length > 0 && <LiveSetList live={live} onEdit={(seq) => setSheet({ kind: 'editSet', seq })} />}
       </div>
 
-      {sheet === 'pick' && (
+      {sheet?.kind === 'pick' && (
         <PickSheet
           exercises={exercises}
           last={lastSet}
+          onExercisesChanged={onExercisesChanged}
           onCancel={() => setSheet(null)}
           onStart={beginSet}
         />
       )}
-      {sheet === 'reps' && live.current && (
+      {sheet?.kind === 'reps' && live.current && (
         <RepsSheet
           exerciseName={live.current.exerciseName}
           weightKg={live.current.weightKg}
@@ -295,12 +357,44 @@ export function SetTracker({
           onDone={endSet}
         />
       )}
+      {sheet?.kind === 'editCurrent' && live.current && (
+        <EditSheet
+          title="세트 수정"
+          exercises={exercises}
+          initial={{
+            exerciseId: live.current.exerciseId,
+            exerciseName: live.current.exerciseName,
+            weightKg: live.current.weightKg,
+            reps: null,
+          }}
+          withReps={false}
+          onExercisesChanged={onExercisesChanged}
+          onCancel={() => setSheet(null)}
+          onSave={editCurrent}
+        />
+      )}
+      {editingSet && (
+        <EditSheet
+          title={`${editingSet.seq}번째 세트 수정`}
+          exercises={exercises}
+          initial={{
+            exerciseId: editingSet.exerciseId,
+            exerciseName: editingSet.exerciseName,
+            weightKg: editingSet.weightKg,
+            reps: editingSet.reps,
+          }}
+          withReps
+          onExercisesChanged={onExercisesChanged}
+          onCancel={() => setSheet(null)}
+          onSave={(v) => editSet(editingSet.seq, v)}
+        />
+      )}
     </>
   )
 }
 
 /** 지금까지 한 세트와 그 사이 휴식 — 저장 전이라 여기서 바로 간격을 계산한다 */
-function LiveSetList({ live }: { live: LiveSession }) {
+function LiveSetList({ live, onEdit }: { live: LiveSession; onEdit: (seq: number) => void }) {
   return (
     <ol className="st-list">
       {live.sets.map((s, i) => {
@@ -313,7 +407,13 @@ function LiveSetList({ live }: { live: LiveSession }) {
                 <span className="muted small">{fmtDur(rest)}</span>
               </div>
             )}
-            <div className="st-row">
+            {/* 줄 전체가 수정 버튼이다 — 헬스장에서 작은 아이콘을 조준할 여유가 없다 */}
+            <button
+              type="button"
+              className="st-row"
+              onClick={() => onEdit(s.seq)}
+              aria-label={`${s.seq}번째 세트 수정`}
+            >
               <span className="chip lap-work">{s.seq}</span>
               <span className="st-row-name">{s.exerciseName}</span>
               <span className="st-row-load">
@@ -321,7 +421,10 @@ function LiveSetList({ live }: { live: LiveSession }) {
                 {s.reps != null && ` × ${s.reps}`}
               </span>
               <span className="muted small">{fmtDur(Math.round((s.endedAt - s.startedAt) / 1000))}</span>
-            </div>
+              <span className="st-row-edit" aria-hidden="true">
+                ✎
+              </span>
+            </button>
           </li>
         )
       })}
@@ -329,84 +432,202 @@ function LiveSetList({ live }: { live: LiveSession }) {
   )
 }
 
+// ── 종목 고르기 (+ 그 자리에서 새로 만들기) ───────────────
+//
+// 처음 하는 종목이 나오면 여기서 바로 만들 수 있어야 한다 — 시트를 닫고
+// 아래 '종목 관리'까지 내려갔다 오는 동안 휴식 시간이 그만큼 흘러간다.
+function ExercisePicker({
+  exercises,
+  picked,
+  onPick,
+  onExercisesChanged,
+}: {
+  exercises: StrengthExercise[]
+  picked: Picked | null
+  onPick: (p: Picked) => void
+  onExercisesChanged: () => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const [name, setName] = useState('')
+  const [cat, setCat] = useState<string>('chest')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const active = exercises.filter((e) => !e.archived)
+  // 이름뿐인 기록(id 없음)을 고칠 때도 지금 고른 게 뭔지 보여야 한다 — 그땐 이름으로 짚는다
+  const isPicked = (e: StrengthExercise) => (!picked ? false : picked.id ? picked.id === e.id : picked.name === e.name)
+
+  async function create() {
+    const n = name.trim()
+    if (!n || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const made = await addExercise(n, cat)
+      onPick({ id: made.id, name: made.name }) // 만들자마자 이 종목으로 시작하는 흐름이라 골라 둔다
+      setName('')
+      setAdding(false)
+      onExercisesChanged()
+    } catch (e) {
+      setError(errMsg(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      {active.length === 0 && !adding && <p className="muted small">종목이 없습니다. 아래에서 하나 만들어 주세요.</p>}
+
+      {CATEGORIES.map((c) => {
+        const list = active.filter((e) => (e.category ?? 'other') === c.key)
+        if (!list.length) return null
+        return (
+          <div key={c.key} className="st-cat">
+            <div className="st-cat-name">
+              <i style={{ background: CATEGORY_COLOR[c.key] }} />
+              {c.label}
+            </div>
+            <div className="st-ex-grid">
+              {list.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  className={`st-ex-btn ${isPicked(e) ? 'active' : ''}`}
+                  onClick={() => onPick({ id: e.id, name: e.name })}
+                >
+                  {e.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {adding ? (
+        <form
+          className="st-newex"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void create()
+          }}
+        >
+          <input
+            className="em-input"
+            placeholder="새 종목 이름 (예: 케이블 크로스오버)"
+            value={name}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+          />
+          <select className="st-select" value={cat} onChange={(e) => setCat(e.target.value)}>
+            {CATEGORIES.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <button className="ghost-btn" type="submit" disabled={busy || !name.trim()}>
+            {busy ? '추가 중…' : '추가'}
+          </button>
+          <button
+            type="button"
+            className="link-btn small"
+            disabled={busy}
+            onClick={() => {
+              setAdding(false)
+              setError(null)
+            }}
+          >
+            취소
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="st-ex-btn st-ex-new" onClick={() => setAdding(true)}>
+          + 새 종목
+        </button>
+      )}
+      {error && <p className="error small">{error}</p>}
+    </>
+  )
+}
+
+/** ± 로도 맞출 수 있는 숫자 칸 — 젖은 손으로 작은 키보드를 두드리는 것보다 빠르다. */
+function NumField({
+  value,
+  onChange,
+  step,
+  placeholder,
+  inputMode,
+}: {
+  value: string
+  onChange: (v: string) => void
+  step: number
+  placeholder: string
+  inputMode: 'decimal' | 'numeric'
+}) {
+  // 칸에 이상한 값이 들어 있어도 ± 는 동작해야 한다 — 잘못 친 값을 되돌릴 길이 이것뿐이다
+  const bump = (d: number) => {
+    const n = numOrNull(value)
+    const base = n != null && Number.isFinite(n) ? n : 0
+    onChange(String(Math.max(0, Math.round((base + d) * 10) / 10)))
+  }
+  return (
+    <div className="st-num">
+      <button type="button" className="st-num-btn" onClick={() => bump(-step)}>
+        −
+      </button>
+      <input
+        className="st-num-input"
+        inputMode={inputMode}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button type="button" className="st-num-btn" onClick={() => bump(step)}>
+        +
+      </button>
+    </div>
+  )
+}
+
 // ── 시트: 종목 + 중량 고르기 ─────────────────────────────
 function PickSheet({
   exercises,
   last,
+  onExercisesChanged,
   onCancel,
   onStart,
 }: {
   exercises: StrengthExercise[]
   last: LiveSession['sets'][number] | undefined
+  onExercisesChanged: () => void
   onCancel: () => void
   onStart: (id: string | null, name: string, weight: number | null) => void
 }) {
   // 직전 세트를 그대로 이어 가는 게 대부분이다 — 기본값으로 채워 두고 바로 시작할 수 있게
-  const [picked, setPicked] = useState<{ id: string | null; name: string } | null>(
+  const [picked, setPicked] = useState<Picked | null>(
     last ? { id: last.exerciseId, name: last.exerciseName } : null,
   )
   const [weight, setWeight] = useState<string>(last?.weightKg != null ? String(last.weightKg) : '')
 
-  const active = exercises.filter((e) => !e.archived)
-  const w = weight.trim() === '' ? null : Number(weight)
+  const w = numOrNull(weight)
   const weightOk = w == null || (Number.isFinite(w) && w >= 0)
-
-  const bump = (d: number) => {
-    const base = w ?? 0
-    setWeight(String(Math.max(0, Math.round((base + d) * 10) / 10)))
-  }
 
   return (
     <Sheet title="세트 준비" onCancel={onCancel}>
       <div className="st-sheet-sec">
         <div className="st-sheet-label">종목</div>
-        {active.length === 0 ? (
-          <p className="muted small">종목이 없습니다. 아래 &lsquo;종목 관리&rsquo;에서 먼저 추가하세요.</p>
-        ) : (
-          CATEGORIES.map((c) => {
-            const list = active.filter((e) => (e.category ?? 'other') === c.key)
-            if (!list.length) return null
-            return (
-              <div key={c.key} className="st-cat">
-                <div className="st-cat-name">
-                  <i style={{ background: CATEGORY_COLOR[c.key] }} />
-                  {c.label}
-                </div>
-                <div className="st-ex-grid">
-                  {list.map((e) => (
-                    <button
-                      key={e.id}
-                      type="button"
-                      className={`st-ex-btn ${picked?.id === e.id ? 'active' : ''}`}
-                      onClick={() => setPicked({ id: e.id, name: e.name })}
-                    >
-                      {e.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )
-          })
-        )}
+        <ExercisePicker
+          exercises={exercises}
+          picked={picked}
+          onPick={setPicked}
+          onExercisesChanged={onExercisesChanged}
+        />
       </div>
 
       <div className="st-sheet-sec">
         <div className="st-sheet-label">중량 (kg) · 비우면 맨몸</div>
-        <div className="st-num">
-          <button type="button" className="st-num-btn" onClick={() => bump(-WEIGHT_STEP)}>
-            −
-          </button>
-          <input
-            className="st-num-input"
-            inputMode="decimal"
-            value={weight}
-            placeholder="맨몸"
-            onChange={(e) => setWeight(e.target.value)}
-          />
-          <button type="button" className="st-num-btn" onClick={() => bump(WEIGHT_STEP)}>
-            +
-          </button>
-        </div>
+        <NumField value={weight} onChange={setWeight} step={WEIGHT_STEP} placeholder="맨몸" inputMode="decimal" />
       </div>
 
       <button
@@ -416,6 +637,77 @@ function PickSheet({
         onClick={() => picked && onStart(picked.id, picked.name, w)}
       >
         세트 시작
+      </button>
+    </Sheet>
+  )
+}
+
+// ── 시트: 이미 넣은 내용 고치기 ──────────────────────────
+function EditSheet({
+  title,
+  exercises,
+  initial,
+  withReps,
+  onExercisesChanged,
+  onCancel,
+  onSave,
+}: {
+  title: string
+  exercises: StrengthExercise[]
+  initial: SetDraft
+  /** 돌고 있는 세트는 아직 횟수가 없다 — 그땐 종목·중량만 묻는다 */
+  withReps: boolean
+  onExercisesChanged: () => void
+  onCancel: () => void
+  onSave: (v: SetDraft) => void
+}) {
+  const [picked, setPicked] = useState<Picked | null>({ id: initial.exerciseId, name: initial.exerciseName })
+  const [weight, setWeight] = useState<string>(initial.weightKg != null ? String(initial.weightKg) : '')
+  const [reps, setReps] = useState<string>(initial.reps != null ? String(initial.reps) : '')
+
+  const w = numOrNull(weight)
+  const r = numOrNull(reps)
+  const ok = !!picked && (w == null || (Number.isFinite(w) && w >= 0)) && (r == null || (Number.isInteger(r) && r > 0))
+
+  return (
+    <Sheet title={title} onCancel={onCancel}>
+      <div className="st-sheet-sec">
+        <div className="st-sheet-label">종목</div>
+        <ExercisePicker
+          exercises={exercises}
+          picked={picked}
+          onPick={setPicked}
+          onExercisesChanged={onExercisesChanged}
+        />
+      </div>
+
+      <div className="st-sheet-sec">
+        <div className="st-sheet-label">중량 (kg) · 비우면 맨몸</div>
+        <NumField value={weight} onChange={setWeight} step={WEIGHT_STEP} placeholder="맨몸" inputMode="decimal" />
+      </div>
+
+      {withReps && (
+        <div className="st-sheet-sec">
+          <div className="st-sheet-label">횟수 · 비워도 됩니다</div>
+          <NumField value={reps} onChange={setReps} step={1} placeholder="—" inputMode="numeric" />
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="st-big-btn go"
+        disabled={!ok}
+        onClick={() =>
+          picked &&
+          onSave({
+            exerciseId: picked.id,
+            exerciseName: picked.name,
+            weightKg: w,
+            reps: withReps ? r : initial.reps,
+          })
+        }
+      >
+        저장
       </button>
     </Sheet>
   )
@@ -438,7 +730,7 @@ function RepsSheet({
   onDone: (reps: number | null) => void
 }) {
   const [reps, setReps] = useState<string>(defaultReps != null ? String(defaultReps) : '')
-  const n = reps.trim() === '' ? null : Number(reps)
+  const n = numOrNull(reps)
   const ok = n == null || (Number.isInteger(n) && n > 0)
 
   return (
@@ -453,21 +745,7 @@ function RepsSheet({
 
       <div className="st-sheet-sec">
         <div className="st-sheet-label">횟수 · 비워도 됩니다</div>
-        <div className="st-num">
-          <button type="button" className="st-num-btn" onClick={() => setReps(String(Math.max(0, (n ?? 0) - 1)))}>
-            −
-          </button>
-          <input
-            className="st-num-input"
-            inputMode="numeric"
-            value={reps}
-            placeholder="—"
-            onChange={(e) => setReps(e.target.value)}
-          />
-          <button type="button" className="st-num-btn" onClick={() => setReps(String((n ?? 0) + 1))}>
-            +
-          </button>
-        </div>
+        <NumField value={reps} onChange={setReps} step={1} placeholder="—" inputMode="numeric" />
       </div>
 
       <button type="button" className="st-big-btn stop" disabled={!ok} onClick={() => onDone(n)}>

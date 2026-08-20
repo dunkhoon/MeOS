@@ -4528,6 +4528,35 @@ code {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* 기록한 세트 줄은 통째로 버튼이다 — 눌러서 종목·중량·횟수를 고친다.
+   테두리는 .st-row 의 윗선만 남기고 버튼 기본값을 걷어낸다. */
+button.st-row {
+  width: 100%;
+  background: none;
+  border-right: none;
+  border-bottom: none;
+  border-left: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+button.st-row:hover {
+  background: var(--bg-elev);
+}
+.st-row-edit {
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+button.st-row:hover .st-row-edit {
+  color: var(--accent);
+}
+/* 돌고 있는 세트를 고치는 링크 — 종목 이름 옆에 붙는다 */
+.st-edit-cur {
+  margin-left: 8px;
+}
 
 /* ── 저장 대기 ── */
 .st-pending {
@@ -4631,6 +4660,24 @@ code {
   color: var(--on-accent);
   border-color: var(--accent);
   font-weight: 600;
+}
+/* 목록에 없는 종목을 그 자리에서 만든다 — 점선으로 '빈 칸'임을 보인다 */
+.st-ex-new {
+  width: 100%;
+  margin-top: 4px;
+  border-style: dashed;
+  color: var(--muted);
+  text-align: center;
+}
+.st-ex-new:hover {
+  color: var(--text);
+}
+.st-newex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 /* 숫자 입력 — 키보드를 안 띄우고도 ± 로 맞출 수 있게 */
@@ -4781,14 +4828,19 @@ code {
      (러닝화 목록 .shoe-act 와 같은 방식) */
   .st-row {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr auto auto;
     grid-template-areas:
-      'chip name name'
-      '.    load dur';
+      'chip name name edit'
+      '.    load dur  edit';
     gap: 2px 8px;
   }
   .st-row > .chip {
     grid-area: chip;
+  }
+  /* 수정 표시는 두 줄에 걸쳐 오른쪽 끝에 선다 */
+  .st-row > .st-row-edit {
+    grid-area: edit;
+    align-self: center;
   }
   .st-row-name {
     grid-area: name;

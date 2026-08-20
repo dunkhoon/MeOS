@@ -71,6 +71,15 @@ export function StrengthTab() {
     void load()
   }, [load])
 
+  // 세트 준비 시트에서 종목을 만들면 목록만 다시 읽는다 — 운동 중엔 세션까지 받아 올 이유가 없다
+  const refreshExercises = useCallback(async () => {
+    try {
+      setExercises(await fetchExercises())
+    } catch (e) {
+      setError(errMsg(e))
+    }
+  }, [])
+
   const catOf = useMemo(() => {
     const m = new Map(exercises.map((e) => [e.name, e.category]))
     return (name: string) => m.get(name) ?? null
@@ -110,7 +119,12 @@ export function StrengthTab() {
     <>
       {error && <p className="error">{error}</p>}
 
-      <SetTracker exercises={exercises} onSaved={() => void load()} onLiveChange={setLive} />
+      <SetTracker
+        exercises={exercises}
+        onSaved={() => void load()}
+        onLiveChange={setLive}
+        onExercisesChanged={() => void refreshExercises()}
+      />
 
       {!live && sessions.length > 0 && (
         <div className="ask-row">
