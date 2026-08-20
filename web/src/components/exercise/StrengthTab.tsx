@@ -185,7 +185,13 @@ export function StrengthTab() {
           </div>
 
           <div className="ex-stack">
-            <StrengthCalendar sessions={sessions} exercises={exercises} onDelete={(id) => void handleDelete(id)} />
+            <StrengthCalendar
+              sessions={sessions}
+              exercises={exercises}
+              onDelete={(id) => void handleDelete(id)}
+              onChanged={() => void load()}
+              onExercisesChanged={() => void refreshExercises()}
+            />
 
             <div className="ex-grid">
               <VolumeChart sessions={sessions} />

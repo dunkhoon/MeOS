@@ -158,6 +158,27 @@ export async function fetchSessionRanges(sinceISODate: string): Promise<{ starte
   return (data ?? []) as { started_at: string; ended_at: string | null }[]
 }
 
+/**
+ * 이미 저장된 세트 하나의 내용을 고친다 (캘린더에서 그날 기록을 볼 때).
+ *
+ * ⚠️ **시각은 건드리지 않는다.** 휴식은 행으로 저장하지 않고 `앞 세트 ended_at ~ 다음 세트
+ * started_at` 간격으로 계산하므로, 시각을 고치면 앞뒤 휴식이 같이 어긋난다. 잘못 적은 건
+ * 종목·중량·횟수지 시간이 아니다 — 그건 실제로 잰 값이다.
+ *
+ * `exercise_name` 은 스냅샷이라 `exercise_id` 와 함께 바꿔 준다. 둘이 어긋나면 종목별
+ * 통계(이름으로 묶는다)와 부위 색(id 로 찾는다)이 서로 다른 말을 한다.
+ */
+export async function updateSet(
+  id: string,
+  v: { exercise_id: string | null; exercise_name: string; weight_kg: number | null; reps: number | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('strength_sets')
+    .update({ ...v, exercise_name: v.exercise_name.trim() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const { error } = await supabase.from('strength_sessions').delete().eq('id', id)
   if (error) throw error
@@ -306,7 +327,10 @@ export function sessionSummary(session: StrengthSession): SessionSummary {
 
 export interface TimelineItem {
   kind: 'work' | 'rest'
+  /** 세트 행 id — 눌러서 고칠 때 쓴다. 휴식은 저장된 행이 아니라 없다. */
+  id?: string
   seq?: number
+  exerciseId?: string | null
   exerciseName?: string
   weightKg?: number | null
   reps?: number | null
@@ -323,7 +347,9 @@ export function timeline(sets: StrengthSet[]): TimelineItem[] {
     }
     out.push({
       kind: 'work',
+      id: s.id,
       seq: s.seq,
+      exerciseId: s.exercise_id,
       exerciseName: s.exercise_name,
       weightKg: s.weight_kg,
       reps: s.reps,

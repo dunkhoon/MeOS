@@ -6,9 +6,12 @@ import {
   fmtDur,
   sessionSummary,
   timeline,
+  updateSet,
   type StrengthExercise,
   type StrengthSession,
+  type TimelineItem,
 } from '../../lib/strength'
+import { SetEditSheet } from './SetSheets'
 
 // 근력 전용 월간 캘린더. 러닝 캘린더(TrainingCalendar)와 격자·스타일을 공유하되,
 // 칸에 담는 건 거리가 아니라 그날의 세트 수와 볼륨이다.
@@ -34,10 +37,15 @@ export function StrengthCalendar({
   sessions,
   exercises,
   onDelete,
+  onChanged,
+  onExercisesChanged,
 }: {
   sessions: StrengthSession[]
   exercises: StrengthExercise[]
   onDelete: (id: string) => void
+  /** 저장된 세트를 고쳤다 — 기록을 다시 읽어야 볼륨·통계가 같이 맞는다 */
+  onChanged: () => void
+  onExercisesChanged: () => void
 }) {
   const [month, setMonth] = useState(readMonth)
   const [openDay, setOpenDay] = useState<string | null>(null)
@@ -189,7 +197,14 @@ export function StrengthCalendar({
             </button>
           </div>
           {openList.map((s) => (
-            <SessionDetail key={s.id} session={s} onDelete={onDelete} />
+            <SessionDetail
+              key={s.id}
+              session={s}
+              exercises={exercises}
+              onDelete={onDelete}
+              onChanged={onChanged}
+              onExercisesChanged={onExercisesChanged}
+            />
           ))}
         </div>
       )}
@@ -235,9 +250,23 @@ function dominantCategory(sessions: StrengthSession[], catOf: (n: string) => str
   return best
 }
 
-function SessionDetail({ session, onDelete }: { session: StrengthSession; onDelete: (id: string) => void }) {
+function SessionDetail({
+  session,
+  exercises,
+  onDelete,
+  onChanged,
+  onExercisesChanged,
+}: {
+  session: StrengthSession
+  exercises: StrengthExercise[]
+  onDelete: (id: string) => void
+  onChanged: () => void
+  onExercisesChanged: () => void
+}) {
   const sum = sessionSummary(session)
   const items = timeline(session.strength_sets)
+  // 고치는 중인 세트. 시트를 여는 동안에도 목록은 그대로 보인다.
+  const [editing, setEditing] = useState<TimelineItem | null>(null)
   return (
     <div className="scal-session">
       <div className="scal-session-head">
@@ -266,7 +295,13 @@ function SessionDetail({ session, onDelete }: { session: StrengthSession; onDele
                 <span className="muted small">{fmtDur(it.durationS)}</span>
               </div>
             ) : (
-              <div className="st-row">
+              // 줄 전체가 수정 버튼이다 — 세트 타이머의 목록과 같은 조작으로 맞춘다
+              <button
+                type="button"
+                className="st-row"
+                onClick={() => setEditing(it)}
+                aria-label={`${it.seq}번째 세트 수정`}
+              >
                 <span className="chip lap-work">{it.seq}</span>
                 <span className="st-row-name">{it.exerciseName}</span>
                 <span className="st-row-load">
@@ -274,11 +309,40 @@ function SessionDetail({ session, onDelete }: { session: StrengthSession; onDele
                   {it.reps != null && ` × ${it.reps}`}
                 </span>
                 <span className="muted small">{fmtDur(it.durationS)}</span>
-              </div>
+                <span className="st-row-edit" aria-hidden="true">
+                  ✎
+                </span>
+              </button>
             )}
           </li>
         ))}
       </ol>
+
+      {editing?.id && (
+        <SetEditSheet
+          title={`${editing.seq}번째 세트 수정`}
+          exercises={exercises}
+          initial={{
+            exerciseId: editing.exerciseId ?? null,
+            exerciseName: editing.exerciseName ?? '',
+            weightKg: editing.weightKg ?? null,
+            reps: editing.reps ?? null,
+          }}
+          withReps
+          onExercisesChanged={onExercisesChanged}
+          onCancel={() => setEditing(null)}
+          onSave={async (v) => {
+            await updateSet(editing.id!, {
+              exercise_id: v.exerciseId,
+              exercise_name: v.exerciseName,
+              weight_kg: v.weightKg,
+              reps: v.reps,
+            })
+            setEditing(null)
+            onChanged() // 볼륨·1RM·부위 색이 다 이 값에서 나온다 — 다시 읽어야 맞는다
+          }}
+        />
+      )}
     </div>
   )
 }
