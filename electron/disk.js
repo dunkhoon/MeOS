@@ -229,13 +229,15 @@ function isProjectRoot(dir, names) {
   return names.some((n) => n.toLowerCase().endsWith('.uproject'))
 }
 
-/** 소스 빌드 엔진 루트인가 (Engine/Build/BatchFiles 가 있는가 — GenerateProjectFiles 가 사는 곳). */
-function looksLikeEngineRoot(dir) {
-  try {
-    return fs.existsSync(path.join(dir, 'Engine', 'Build', 'BatchFiles'))
-  } catch {
-    return false
-  }
+/**
+ * 소스 빌드 엔진 루트인가.
+ *
+ * 이미 읽어 둔 폴더 목록만 보고 판단한다 — 디렉터리마다 existsSync 를 한 번 더 부르면
+ * 26만 폴더에서 그만큼 syscall 이 는다. 실측 엔진 트리(UE 5.5)의 최상위:
+ *   5.5.sln · Engine · FeaturePacks · GenerateProjectFiles.bat · Templates …
+ */
+function looksLikeEngineRoot(names) {
+  return names.includes('GenerateProjectFiles.bat') || (names.includes('Engine') && names.includes('FeaturePacks'))
 }
 
 // ── 스캔 ─────────────────────────────────────────────────────
@@ -321,8 +323,10 @@ async function scanTree(root, opts = {}) {
     stats.dirs += 1
 
     const names = entries.map((e) => e.name)
+    // 깊이 제한을 두지 않는다 — 드라이브를 통째로 훑으면 엔진이 D:\Work\TT\UE\5.5 처럼
+    // 깊은 곳에 있고, 그때 엔진의 Intermediate·DerivedDataCache(수십 GB)를 통째로 놓친다
     if (isProjectRoot(dir, names)) projects.push(dir)
-    else if (depth <= 1 && looksLikeEngineRoot(dir)) engines.push(dir)
+    else if (looksLikeEngineRoot(names)) engines.push(dir)
 
     let size = 0
     let files = 0
@@ -347,9 +351,18 @@ async function scanTree(root, opts = {}) {
         if (sub.mtime > mtime) mtime = sub.mtime
         children.push(sub)
       } else if (ent.isFile()) {
-        // throwIfNoEntry:false — 스캔 도중 사라지는 파일(빌드 중 임시파일)이 흔한데,
-        // 그때마다 예외를 던지면 뜨거운 루프에서 비용이 크다
-        const st = fs.statSync(full, { throwIfNoEntry: false })
+        // ⚠️ throwIfNoEntry:false 는 **ENOENT 만** 막는다. 잠긴 시스템 파일은 EPERM 을 던진다 —
+        //    드라이브 루트에는 그런 게 늘 있다(DumpStack.log.tmp · pagefile.sys · swapfile.sys ·
+        //    hiberfil.sys). try/catch 를 빼면 그 파일 하나 때문에 스캔 전체가 죽는다.
+        //    (throwIfNoEntry 는 그대로 둔다 — 빌드 중 사라지는 임시파일이 흔해서, 그건 예외 없이 넘긴다)
+        let st
+        try {
+          st = fs.statSync(full, { throwIfNoEntry: false })
+        } catch (e) {
+          if (e && (e.code === 'EPERM' || e.code === 'EACCES' || e.code === 'EBUSY')) stats.denied += 1
+          else stats.skipped += 1
+          continue
+        }
         if (!st) {
           stats.skipped += 1
           continue
@@ -668,7 +681,13 @@ async function findDuplicates(root, opts = {}) {
       if (ent.isDirectory()) {
         await walk(full)
       } else if (ent.isFile()) {
-        const st = fs.statSync(full, { throwIfNoEntry: false })
+        // 스캔과 같은 이유로 감싼다 — 잠긴 파일(EPERM)에 통째로 멈추면 안 된다
+        let st
+        try {
+          st = fs.statSync(full, { throwIfNoEntry: false })
+        } catch {
+          continue
+        }
         if (!st || st.size < minBytes) continue
         stats.scanned += 1
         const list = bySize.get(st.size) || []

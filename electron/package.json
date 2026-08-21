@@ -22,14 +22,8 @@
     },
     "npmRebuild": false,
     "files": [
-      "main.js",
-      "preload.js",
+      "*.js",
       "shell.html",
-      "bts.js",
-      "p4.js",
-      "llm.js",
-      "review.js",
-      "reviewStore.js",
       "app-icon.png",
       "tray-icon.png"
     ],
