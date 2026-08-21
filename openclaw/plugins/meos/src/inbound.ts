@@ -87,6 +87,29 @@ async function downloadToTemp(url: string): Promise<{ filePath: string; dir: str
   return { filePath, dir, mime };
 }
 
+/**
+ * dispatch 반환값을 한 줄로 요약한다.
+ *
+ * 모양이 버전마다 조금씩 달라 형태를 가정하지 않는다 — 아는 칸만 뽑고,
+ * 모르는 모양이면 통째로 문자열로 남긴다. 진단용이라 정확한 타입보다 "무엇이든 남는 것" 이 낫다.
+ */
+function describeDispatchOutcome(outcome: unknown): string {
+  if (!outcome || typeof outcome !== "object") return String(outcome ?? "");
+  const o = outcome as Record<string, unknown>;
+  const bits: string[] = [];
+  for (const key of ["status", "reason", "queuedFinal", "skipped"]) {
+    if (o[key] !== undefined) bits.push(`${key}=${String(o[key])}`);
+  }
+  const counts = o.counts;
+  if (counts && typeof counts === "object") bits.push(`counts=${JSON.stringify(counts)}`);
+  if (bits.length) return bits.join(" ");
+  try {
+    return JSON.stringify(o).slice(0, 300);
+  } catch {
+    return "(요약 불가)";
+  }
+}
+
 export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMessage): Promise<void> {
   const { account, cfg, channelRuntime } = deps;
   // 답을 되돌릴 대상은 "대화" 다. 대화마다 세션이 갈리므로 새 대화 = 새 맥락이 된다.
@@ -179,8 +202,13 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
     },
   });
 
+  // ⚠️ dispatch 결과를 버리면 안 된다. core 는 턴을 **조용히 건너뛸 수 있다**
+  //    (같은 세션에 안 끝난 reply operation 이 있으면 `{status:"busy"}` 로 그냥 돌아온다).
+  //    예외도 아니고 로그도 verbose 에서만 나와서, 버리면 화면엔 "답하지 않았습니다" 만 남고
+  //    이유가 통째로 사라진다 — 실제로 그 상태에서 원인을 못 찾아 한참 헤맸다.
+  let dispatchInfo = "";
   try {
-    await channelRuntime.reply.withReplyDispatcher({
+    const outcome = await channelRuntime.reply.withReplyDispatcher({
       dispatcher,
       run: () =>
         channelRuntime.reply.dispatchReplyFromConfig({
@@ -190,6 +218,8 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
           replyOptions: { ...replyOptions, disableBlockStreaming: true },
         }),
     });
+    dispatchInfo = describeDispatchOutcome(outcome);
+    deps.log(`dispatch ${message.id}: ${dispatchInfo}`);
   } catch (err) {
     await cleanup();
     await postFailure(account, { messageId: message.id, error: String(err).slice(0, 2000) });
@@ -202,9 +232,12 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
   const answer = chunks.join("\n\n").trim();
   if (!answer) {
     // 도구만 돌고 글이 안 나온 경우도 있다 — 화면에 영원히 '대기 중' 으로 남으면 안 된다
+    const why = delivered ? "빈 답이 돌아왔습니다." : "에이전트가 답하지 않았습니다.";
+    deps.errLog(`${why} ${message.id} · ${dispatchInfo || "dispatch 결과 없음"}`);
     await postFailure(account, {
       messageId: message.id,
-      error: delivered ? "빈 답이 돌아왔습니다." : "에이전트가 답하지 않았습니다.",
+      // 이유를 같이 넘긴다 — 화면에서 바로 보이고, 로그를 못 봐도 무엇이 막았는지 안다
+      error: dispatchInfo ? `${why} (${dispatchInfo})` : why,
     });
     return;
   }
