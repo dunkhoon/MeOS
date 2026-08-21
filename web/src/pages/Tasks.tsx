@@ -271,6 +271,24 @@ export default function Tasks() {
     await applyPatch(it, { url: normalizeUrl(text) })
   }
 
+  // ── 메모 ───────────────────────────────────────────────────
+  // 한 번에 하나만 펼친다 — 여러 개를 열어 두면 목록이 길어져 무엇이 진행 중인지 안 보인다.
+  const [memoId, setMemoId] = useState<string | null>(null)
+
+  const saveMemo = async (it: WorkItem, text: string) => {
+    // 빈 메모는 null 로 — '' 로 두면 메모가 있는 것처럼 표시된다
+    const note = text.trim() || null
+    setMemoId(null)
+    if (note === it.note) return
+    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, note } : x)))
+    try {
+      await updateWorkItem(it.id, { note })
+    } catch (e) {
+      setErr(errMsg(e))
+      void reload()
+    }
+  }
+
   // ── 루틴 ───────────────────────────────────────────────────
   const sortedRoutines = [...routines].sort(bySort)
   const routineDone = routines.filter((r) => isRoutineDone(r, today)).length
@@ -379,8 +397,11 @@ export default function Tasks() {
                       dragging={draggingId === it.id}
                       editing={editingTitleId === it.id}
                       editingUrl={editing?.id === it.id && editing.field === 'url'}
+                      memoOpen={memoId === it.id}
                       onStartEdit={() => setEditing({ id: it.id, field: 'title' })}
                       onStartEditUrl={() => setEditing({ id: it.id, field: 'url' })}
+                      onToggleMemo={() => setMemoId((v) => (v === it.id ? null : it.id))}
+                      onSaveMemo={(text) => void saveMemo(it, text)}
                       onSaveEdit={(text) => void saveEdit(it, text)}
                       onSaveUrl={(text) => void saveUrl(it, text)}
                       onCancelEdit={() => setEditing(null)}
@@ -436,8 +457,9 @@ export default function Tasks() {
               <p className="muted small todo-empty">BTS 와 무관한 할 일을 추가하세요. (드래그해 진행 중으로 이동 가능)</p>
             ) : (
               todos.map((it) => (
+                // 진행 중인 업무에서 끌어온 항목은 메모를 달고 온다 — 여기서도 보여야 사라진 것처럼 안 보인다
+                <div key={it.id} className={`wp-item ${memoId === it.id ? 'memo-open' : ''}`}>
                 <div
-                  key={it.id}
                   className={`todo-row ${it.done ? 'done' : ''} ${draggingId === it.id ? 'dragging' : ''}`}
                   draggable={editing?.id !== it.id}
                   onDragStart={(e) => {
@@ -476,12 +498,20 @@ export default function Tasks() {
                     <span className="wp-right">
                       <RowActions
                         item={it}
+                        memoOpen={memoId === it.id}
+                        onToggleMemo={() => setMemoId((v) => (v === it.id ? null : it.id))}
                         onEditTitle={() => setEditing({ id: it.id, field: 'title' })}
                         onEditUrl={() => setEditing({ id: it.id, field: 'url' })}
                         onTrash={() => void trashItem(it.id)}
                       />
                     </span>
                   )}
+                </div>
+                {memoId === it.id ? (
+                  <MemoPanel item={it} onSave={(text) => void saveMemo(it, text)} onCancel={() => setMemoId(null)} />
+                ) : (
+                  it.note && <MemoPreview item={it} onOpen={() => setMemoId(it.id)} />
+                )}
                 </div>
               ))
             )}
@@ -631,6 +661,13 @@ const LinkIcon = () => (
   </svg>
 )
 
+const MemoIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 5h16v10H8l-4 4Z" />
+    <path d="M8 9h8" />
+  </svg>
+)
+
 const CopyIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="9" y="9" width="12" height="12" rx="2" />
@@ -669,14 +706,18 @@ function CopyButton({ item }: { item: WorkItem }) {
   )
 }
 
-/** 열기 / URL 수정 / 제목 수정 / 삭제 — 두 목록이 같은 버튼을 쓴다. */
+/** 열기 / 메모 / URL 수정 / 제목 수정 / 삭제 — 두 목록이 같은 버튼을 쓴다. */
 function RowActions({
   item,
+  memoOpen,
+  onToggleMemo,
   onEditTitle,
   onEditUrl,
   onTrash,
 }: {
   item: WorkItem
+  memoOpen: boolean
+  onToggleMemo: () => void
   onEditTitle: () => void
   onEditUrl: () => void
   onTrash: () => void
@@ -684,6 +725,15 @@ function RowActions({
   return (
     <>
       <CopyButton item={item} />
+      {/* 메모가 있으면 늘 보인다 — 적어 둔 게 있다는 걸 행만 보고 알아야 한다 */}
+      <button
+        type="button"
+        className={`row-icon memo-btn ${item.note ? 'has' : 'edit-btn'} ${memoOpen ? 'on' : ''}`}
+        title={item.note ? `메모: ${item.note.split('\n')[0]}` : '메모 추가'}
+        onClick={onToggleMemo}
+      >
+        <MemoIcon />
+      </button>
       {item.url && (
         <button type="button" className="row-icon" title="열기" onClick={() => openLink(item.url!)}>
           <LinkIcon />
@@ -710,14 +760,82 @@ function RowActions({
   )
 }
 
+// ── 항목 메모 ────────────────────────────────────────────────
+//
+// 제목 한 줄로는 남길 수 없는 진행 상황을 항목에 붙여 둔다. 여러 줄로 적으므로
+// 제목·URL 처럼 행 안에서 고치지 않고 행 아래로 펼친다.
+//
+// 저장은 명시적으로 한다 — 제목 칸은 포커스를 잃으면 저장하지만(한 줄이라 실수해도 금방
+// 되돌린다), 여러 줄 메모는 화면 아무 데나 눌렀다가 반쯤 쓴 글이 저장되면 곤란하다.
+function MemoPanel({
+  item,
+  onSave,
+  onCancel,
+}: {
+  item: WorkItem
+  onSave: (text: string) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = useState(item.note ?? '')
+  const dirty = text !== (item.note ?? '')
+
+  return (
+    <div className="wp-memo-edit">
+      <textarea
+        className="wp-memo-input"
+        value={text}
+        rows={4}
+        autoFocus
+        placeholder="진행 상황·확인한 것·다음에 할 것…"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter 는 줄바꿈이어야 한다 — 저장은 Ctrl(⌘)+Enter
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault()
+            onSave(text)
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            onCancel()
+          }
+        }}
+      />
+      <div className="wp-memo-actions">
+        <span className="muted small">Ctrl+Enter 저장 · Esc 닫기</span>
+        <button type="button" className="link-btn small" onClick={onCancel}>
+          닫기
+        </button>
+        <button type="button" className="ghost-btn" disabled={!dirty} onClick={() => onSave(text)}>
+          저장
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** 접혀 있을 때 보여 주는 메모 — 첫 줄만. 누르면 펼쳐진다. */
+function MemoPreview({ item, onOpen }: { item: WorkItem; onOpen: () => void }) {
+  const lines = item.note!.split('\n').filter((l) => l.trim())
+  const more = lines.length - 1
+  return (
+    <button type="button" className="wp-memo" onClick={onOpen} title="메모 수정">
+      <MemoIcon />
+      <span className="wp-memo-text">{lines[0]}</span>
+      {more > 0 && <span className="muted small wp-memo-more">+{more}줄</span>}
+    </button>
+  )
+}
+
 // ── 진행 중인 업무 한 줄 ─────────────────────────────────────
 function WorkRow({
   item,
   dragging,
   editing,
   editingUrl,
+  memoOpen,
   onStartEdit,
   onStartEditUrl,
+  onToggleMemo,
+  onSaveMemo,
   onSaveEdit,
   onSaveUrl,
   onCancelEdit,
@@ -730,8 +848,11 @@ function WorkRow({
   dragging: boolean
   editing: boolean
   editingUrl: boolean
+  memoOpen: boolean
   onStartEdit: () => void
   onStartEditUrl: () => void
+  onToggleMemo: () => void
+  onSaveMemo: (text: string) => void
   onSaveEdit: (text: string) => void
   onSaveUrl: (text: string) => void
   onCancelEdit: () => void
@@ -740,7 +861,9 @@ function WorkRow({
   onDragEnd: () => void
   onTrash: (id: string) => void
 }) {
+  // 메모는 행 밖(아래)에 둔다 — 행 안에 넣으면 draggable 안이라 글자를 끌어 선택할 수 없다
   return (
+    <div className={`wp-item ${memoOpen ? 'memo-open' : ''}`}>
     <div
       className={`wp-row ${dragging ? 'dragging' : ''}`}
       // 수정 중엔 입력칸에서 글자를 드래그 선택할 수 있어야 하므로 드래그를 끈다
@@ -779,12 +902,20 @@ function WorkRow({
           {item.btsVersion && <span className={`chip ver ${/^\d/.test(item.btsVersion) ? 'build' : ''}`}>{item.btsVersion}</span>}
           <RowActions
             item={item}
+            memoOpen={memoOpen}
+            onToggleMemo={onToggleMemo}
             onEditTitle={onStartEdit}
             onEditUrl={onStartEditUrl}
             onTrash={() => onTrash(item.id)}
           />
         </span>
       )}
+    </div>
+    {memoOpen ? (
+      <MemoPanel item={item} onSave={onSaveMemo} onCancel={onToggleMemo} />
+    ) : (
+      item.note && <MemoPreview item={item} onOpen={onToggleMemo} />
+    )}
     </div>
   )
 }

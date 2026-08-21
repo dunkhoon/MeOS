@@ -2449,6 +2449,99 @@ code {
   background: color-mix(in srgb, var(--h-red) 12%, transparent);
 }
 
+/* ── 항목 메모 ──
+   행(.wp-row/.todo-row)은 draggable 이라 그 안에 여러 줄 입력칸을 두면 글자를 끌어
+   선택할 수 없다. 그래서 메모는 행을 감싼 .wp-item 안, 행 **아래**에 붙인다. */
+.wp-item {
+  display: flex;
+  flex-direction: column;
+}
+/* 접힌 메모 — 한 줄만, 무슨 메모인지 알아볼 정도로 */
+.wp-memo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: -2px 0 4px;
+  padding: 3px 8px 3px 30px; /* 상태 칩 너비만큼 들여써 제목 줄과 결이 맞는다 */
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.wp-memo:hover {
+  background: var(--bg-card);
+  color: var(--text);
+}
+.wp-memo svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.wp-memo-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-memo-more {
+  flex-shrink: 0;
+}
+
+/* 펼친 메모 */
+.wp-memo-edit {
+  margin: 2px 0 8px 30px;
+}
+.wp-memo-input {
+  display: block;
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.wp-memo-input:focus {
+  outline: none;
+}
+.wp-memo-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+.wp-memo-actions .ghost-btn {
+  padding: 4px 14px;
+  font-size: 12.5px;
+}
+/* 메모가 있는 항목은 버튼이 늘 보이고(.has 는 edit-btn 이 아니라 숨지 않는다), 펼치면 강조된다 */
+.memo-btn.has {
+  color: var(--ink-accent);
+}
+.memo-btn.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+@media (max-width: 768px) {
+  /* 폰에서는 들여쓰기를 줄인다 — 좁은 폭에서 30px 는 메모 글자를 너무 밀어낸다 */
+  .wp-memo {
+    padding-left: 8px;
+  }
+  .wp-memo-edit {
+    margin-left: 0;
+  }
+}
+
 /* 행 안에서 제목 고치기 */
 .row-edit {
   flex: 1;

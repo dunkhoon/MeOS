@@ -16,6 +16,8 @@ export interface WorkItem {
   status: WorkStatus
   title: string
   url: string | null
+  /** 항목에 붙여 둔 여러 줄 메모. 비어 있으면 null (빈 문자열로 두지 않는다 — 있는지 없는지로 화면이 갈린다) */
+  note: string | null
   done: boolean
   sort: number
   origin: WorkOrigin
@@ -42,6 +44,7 @@ interface WorkRow {
   status: string
   title: string
   url: string | null
+  note: string | null
   done: boolean
   sort: number
   origin: string
@@ -63,7 +66,7 @@ interface RoutineRow {
 }
 
 const WORK_COLS =
-  'id,list,status,title,url,done,sort,origin,bts_system,bts_issue_id,bts_tracker,bts_version,deleted_at,updated_at'
+  'id,list,status,title,url,note,done,sort,origin,bts_system,bts_issue_id,bts_tracker,bts_version,deleted_at,updated_at'
 const ROUTINE_COLS = 'id,title,sort,last_done_on,deleted_at,updated_at'
 
 function toItem(r: WorkRow): WorkItem {
@@ -73,6 +76,7 @@ function toItem(r: WorkRow): WorkItem {
     status: (STATUSES as string[]).includes(r.status) ? (r.status as WorkStatus) : 'wait',
     title: r.title,
     url: r.url,
+    note: r.note,
     done: r.done,
     sort: r.sort,
     origin: r.origin === 'bts' ? 'bts' : 'manual',
@@ -102,13 +106,19 @@ export function todayStr(d: Date = new Date()): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-/** 마이그레이션 미적용(테이블 없음)을 알아보기 쉬운 메시지로 바꿔준다. */
+/** 마이그레이션 미적용(테이블·컬럼 없음)을 알아보기 쉬운 메시지로 바꿔준다. */
 function wrap(error: { message: string; code?: string } | null, what: string): void {
   if (!error) return
   if (error.code === '42P01' || /relation .* does not exist/i.test(error.message)) {
     throw new Error(
       `${what} 테이블이 없습니다. Supabase SQL 편집기에서 supabase/migrations/0005_work.sql 을 실행하세요.`,
     )
+  }
+  // 컬럼이 없다 = 나중에 추가된 마이그레이션을 아직 안 돌렸다.
+  // 여기서 안 잡으면 "column work_items.note does not exist" 만 뜨고, 목록 전체가 안 보인다.
+  if (error.code === '42703' || /column .* does not exist/i.test(error.message)) {
+    const file = /note/.test(error.message) ? '0016_work_notes.sql' : '최신 마이그레이션'
+    throw new Error(`${what} 에 없는 컬럼입니다 (${error.message}). Supabase SQL 편집기에서 ${file} 을 실행하세요.`)
   }
   throw new Error(error.message)
 }
@@ -161,7 +171,7 @@ export async function addWorkItem(input: NewWorkItem): Promise<WorkItem> {
 
 export async function updateWorkItem(
   id: string,
-  patch: Partial<Pick<WorkItem, 'list' | 'status' | 'title' | 'url' | 'done' | 'sort'>>,
+  patch: Partial<Pick<WorkItem, 'list' | 'status' | 'title' | 'url' | 'note' | 'done' | 'sort'>>,
 ): Promise<void> {
   const { error } = await supabase.from('work_items').update(patch).eq('id', id)
   wrap(error, 'work_items')
