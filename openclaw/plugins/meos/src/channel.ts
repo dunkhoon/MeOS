@@ -1,5 +1,6 @@
-import { postAnswer, type MeosAccount } from "./client.js";
+import type { MeosAccount } from "./client.js";
 import { CHANNEL_ID, inspectMeosAccount, listMeosAccountIds, resolveMeosAccount } from "./config.js";
+import { meosMessageAdapter, meosOutbound } from "./outbound.js";
 import { runMeosPoller, type PollerParams } from "./poller.js";
 
 // MeOS 채널.
@@ -78,20 +79,11 @@ export const meosPlugin = {
     }),
   },
 
-  outbound: {
-    deliveryMode: "direct",
-    textChunkLimit: 20000,
-    /**
-     * 대화를 먼저 거는 경로(cron 등). `to` 는 답을 달 **질문 id** 여야 한다.
-     * 평소 답변은 inbound.ts 가 직접 저장하므로 여기를 지나지 않는다.
-     */
-    sendText: async (ctx: { cfg: unknown; to: string; text: string; accountId?: string }) => {
-      const account = resolveMeosAccount(ctx.cfg, ctx.accountId);
-      if (!account.configured) throw new Error("meos: baseUrl/token 이 설정되지 않았습니다.");
-      await postAnswer(account, { messageId: ctx.to, content: ctx.text });
-      return { channel: CHANNEL_ID, messageId: ctx.to };
-    },
-  },
+  // 보내기는 outbound.ts 한 곳에 있다. 여기서는 두 자리에 꽂기만 한다.
+  //   outbound — 청크 한도·전송 방식 (2026.7 에서도 그대로 쓰인다)
+  //   message  — 그 outbound 를 감싼 새 어댑터 (durable send·receipt)
+  outbound: meosOutbound,
+  message: meosMessageAdapter,
 
   status: {
     defaultRuntime: {

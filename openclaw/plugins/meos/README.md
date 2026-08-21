@@ -81,6 +81,12 @@ curl -s "https://<프로젝트>.supabase.co/functions/v1/chat?data=overview" -H 
 - **답이 비어도 반드시 표시를 남긴다.** 도구만 돌고 글이 안 나오는 경우가 있는데,
   그대로 두면 화면에 '생각하는 중…' 이 영원히 남는다.
 - **연달아 실패하면 폴링 간격을 늘린다.** 함수가 죽었을 때 초당 요청을 계속 때리지 않도록.
+- **보내기 구현은 한 벌이다.** 2026.6/2026.7 의 채널은 `outbound`(청크 한도·전송 방식)와
+  `message`(durable send·receipt) 두 자리를 갖는다. 두 벌로 쓰면 반드시 갈라지므로,
+  `src/outbound.ts` 의 `sendMeosText` 하나를 만들어 `outbound` 에 꽂고 같은 객체를
+  `createChannelMessageAdapterFromOutbound()` 로 감싸 `message` 에 꽂는다.
+  capability 는 `outbound.deliveryCapabilities.durableFinal` 한 곳에만 적는다 —
+  브리지가 같은 자리를 읽는다.
 
 ## 아직 확인 못 한 것
 
@@ -90,6 +96,12 @@ curl -s "https://<프로젝트>.supabase.co/functions/v1/chat?data=overview" -H 
 - 채널 객체가 SDK 의 `ChannelPlugin` 타입에 **캐스트 없이** 맞는다
 - 도구가 `api.registerTool` 이 받는 타입에 맞는다
   (이 과정에서 필수 `label` 누락과 필수 `details` 누락을 잡았다)
+- `message` 어댑터를 **실제 SDK(2026.7.1-2)로 타입체크 + 런타임 확인**했다:
+  브리지가 `outbound.deliveryCapabilities.durableFinal` 을 물려받아 `{text:true}` 로 선언하고,
+  `send.text` 만 노출하며(미디어 없음), receive 는 manual ack 기본값이 붙고,
+  `{channel, messageId}` 반환값이 `MessageReceipt`(parts 1개, kind=text)로 정규화된다.
+  ⚠️ 문서 예제의 `durableFinal: { capabilities: … }` 인자는 **실제 타입에 없다** —
+  그대로 쓰면 조용히 아무 capability 도 선언되지 않는다.
 
 `gateway.startAccount` 의 `ctx.channelRuntime` 표면은 번들 채널 구현을 따라 맞췄지만
 런타임 동작은 첫 실행에서 확인이 필요하다. 안 되면 게이트웨이 로그의 `[meos]` 줄을 본다.
