@@ -18,6 +18,12 @@ dist-desktop/
 !electron/build/
 !electron/build/icon.ico
 
+# OpenClaw 플러그인 빌드 결과도 커밋한다 — `openclaw plugins install` 은 .ts 를 빌드하지 않고
+# 폴더를 그대로 복사한다. dist 가 없으면 설치가 거절되고, 낡은 dist 가 있으면 그게 그대로
+# 깔린다(고친 게 조용히 무시됨). 설치하는 PC 에 빌드 도구를 두지 않으려고 결과를 함께 둔다.
+!openclaw/plugins/*/dist/
+!openclaw/plugins/*/dist/**
+
 # 도구 상태 (세션·비용 기록 등 — 저장소에 들어갈 이유 없음)
 .omc/
 
