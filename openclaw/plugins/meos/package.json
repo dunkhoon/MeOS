@@ -7,6 +7,10 @@
   "engines": {
     "node": ">=22"
   },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json"
+  },
   "peerDependencies": {
     "openclaw": ">=2026.6.34"
   },

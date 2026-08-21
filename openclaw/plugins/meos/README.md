@@ -39,7 +39,34 @@ MeOS 앱 (폰/PC)              Supabase                집 PC (OpenClaw)
 ⚠️ 이 저장소가 **OpenClaw 가 도는 PC** 에 있어야 한다.
 
 ```bash
-openclaw plugins install ./openclaw/plugins/meos
+git pull
+openclaw plugins install ./openclaw/plugins/meos --force
+systemctl --user restart openclaw-gateway.service   # 재시작해야 새 코드가 뜬다
+```
+
+### ⚠️ `dist/` 는 저장소에 커밋한다 — 고치면 반드시 다시 빌드
+
+`openclaw plugins install` 은 **TypeScript 를 빌드하지 않는다.** 폴더를 그대로 복사할 뿐이라
+컴파일된 `dist/index.js` 가 없으면 설치를 아예 거절한다:
+
+```
+package install requires compiled runtime output for TypeScript entry ./index.ts:
+expected ./dist/index.js, …
+```
+
+설치하는 PC(리눅스)에 빌드 도구를 두지 않으려고 `dist/` 를 저장소에 함께 커밋한다.
+그래서 **소스를 고치면 dist 도 같이 커밋해야 한다.** 안 하면 `git pull` 은 `.ts` 만 갱신하고
+설치는 낡은 `dist` 를 그대로 복사한다 — 고친 게 반영 안 된 채 조용히 옛 동작이 유지된다
+(실제로 이걸로 한참 헤맸다).
+
+```bash
+cd openclaw/plugins/meos && npm run build   # → dist/  (tsc, 번들 아님)
+```
+
+설치본에 반영됐는지 확인:
+
+```bash
+grep -rl <고친_코드의_한_조각> ~/.openclaw/extensions/meos/
 ```
 
 `~/.openclaw/openclaw.json` 에 채널 설정을 넣는다:

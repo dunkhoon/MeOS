@@ -1,0 +1,18 @@
+{
+  // `npm run build` 용 — 타입 검사만 하는 tsconfig.json 에 "내보내기" 만 얹는다.
+  //
+  // ⚠️ `openclaw plugins install` 은 **TypeScript 를 빌드하지 않는다.** 폴더를 그대로 복사할 뿐이라
+  //    컴파일된 `dist/index.js` 가 없으면 설치가 아예 거절된다
+  //    ("package install requires compiled runtime output for TypeScript entry ./index.ts").
+  //    그래서 `dist/` 를 저장소에 함께 커밋한다 — 설치하는 PC 에 빌드 도구가 없어도 되게.
+  //    **소스를 고치면 반드시 `npm run build` 를 돌려 dist 도 같이 커밋한다.**
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["index.ts", "setup-entry.ts", "src/**/*.ts"]
+}
