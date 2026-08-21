@@ -87,11 +87,19 @@ curl -s "https://<프로젝트>.supabase.co/functions/v1/chat?data=overview" -H 
   `createChannelMessageAdapterFromOutbound()` 로 감싸 `message` 에 꽂는다.
   capability 는 `outbound.deliveryCapabilities.durableFinal` 한 곳에만 적는다 —
   브리지가 같은 자리를 읽는다.
+- **자동 전달을 명시적으로 요청한다.** core 는 최종 텍스트를 자동으로 넘길지, 에이전트가
+  `message` 도구를 직접 불러야 하는지를 턴마다 정한다. 직접 대화이고 `messages.visibleReplies`
+  가 없으면 **harness 기본값**이 먹는데, codex harness 는 `message_tool` 이 기본이다. 그러면
+  에이전트가 도구를 안 부르고 답한 글은 **조용히 버려진다.** MeOS 는 "질문 하나 → 답 하나를
+  DB 에 저장" 이 계약이라 `replyOptions.sourceReplyDeliveryMode: "automatic"` 을 직접 넘긴다.
 
-## 아직 확인 못 한 것
+## 어디까지 확인했나
 
-이 플러그인은 **실제 OpenClaw 게이트웨이에서 돌려 보지 않았다** (개발 PC 에 OpenClaw 가 없다).
-확인한 것은 여기까지다:
+**실제 게이트웨이에서 로드·기동 확인**(2026-08-21, OpenClaw 2026.7.1-2 `0790d9f`):
+`plugins doctor` 가 깨끗하고, 로그에 `[meos] 폴링 시작 · 3000ms · https://…/functions/v1/chat`
+가 찍힌다. 즉 플러그인 로드 → 계정 해석 → `gateway.startAccount` → 폴러 기동까지 돈다.
+
+개발 PC 에는 OpenClaw 가 없어 나머지는 npm 실물 패키지(같은 빌드)를 받아 확인했다:
 
 - 채널 객체가 SDK 의 `ChannelPlugin` 타입에 **캐스트 없이** 맞는다
 - 도구가 `api.registerTool` 이 받는 타입에 맞는다
@@ -103,5 +111,19 @@ curl -s "https://<프로젝트>.supabase.co/functions/v1/chat?data=overview" -H 
   ⚠️ 문서 예제의 `durableFinal: { capabilities: … }` 인자는 **실제 타입에 없다** —
   그대로 쓰면 조용히 아무 capability 도 선언되지 않는다.
 
-`gateway.startAccount` 의 `ctx.channelRuntime` 표면은 번들 채널 구현을 따라 맞췄지만
-런타임 동작은 첫 실행에서 확인이 필요하다. 안 되면 게이트웨이 로그의 `[meos]` 줄을 본다.
+**답변 디스패치**: 실제 게이트웨이에서 질문이 에이전트까지 가고 답이 만들어지는 것까지 확인했다
+(로그의 `session turn created … channel=meos` → `embedded run done`). 그런데 그 답이 화면에
+안 떴고, 원인은 위의 `sourceReplyDeliveryMode` 였다 — core 가 `message_tool_only` 로 판정해
+최종 텍스트를 버리고 있었다(`final reply suppressed by sourceReplyDeliveryMode`, verbose 로그).
+그때 앱에는 "에이전트가 답하지 않았습니다" 만 남아, 로그를 debug 로 올리기 전까지 원인이 안 보였다.
+고친 뒤 실제 SDK 의 판정 함수(`resolveSourceReplyDeliveryMode`)를 직접 불러 확인했다 —
+requested 없이 codex harness 면 `message_tool_only`, `"automatic"` 을 넘기면 `messages.
+visibleReplies=message_tool` 이 잡혀 있어도·message 도구가 없어도 `automatic` 이 나온다.
+
+`message` 어댑터의 send 경로는 cron 처럼 밖에서 먼저 말을 걸 때만 지난다 — 평소 답변은
+inbound.ts 가 직접 저장하므로, 일상 사용만으로는 그 경로가 안 밟힌다(아직 실사용 미확인).
+
+문제가 생기면 `openclaw logs --follow` 에서 `[meos]` 줄을 본다. 이유가 안 보이면
+`~/.openclaw/openclaw.json` 의 `logging.level` 을 `"debug"` 로 올리고 게이트웨이를 재시작한 뒤
+`message processed: channel=meos … outcome=… reason=…` 줄을 찾는다. core 가 턴을 건너뛴 이유는
+**반환값에 안 실리고** 그 로그에만 남는다.

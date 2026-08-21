@@ -202,10 +202,9 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
     },
   });
 
-  // ⚠️ dispatch 결과를 버리면 안 된다. core 는 턴을 **조용히 건너뛸 수 있다**
-  //    (같은 세션에 안 끝난 reply operation 이 있으면 `{status:"busy"}` 로 그냥 돌아온다).
-  //    예외도 아니고 로그도 verbose 에서만 나와서, 버리면 화면엔 "답하지 않았습니다" 만 남고
-  //    이유가 통째로 사라진다 — 실제로 그 상태에서 원인을 못 찾아 한참 헤맸다.
+  // ⚠️ dispatch 결과를 버리면 안 된다. core 는 턴을 **조용히 건너뛸 수 있다** — 예외도 아니고
+  //    로그도 verbose 에서만 나온다. 버리면 화면엔 "답하지 않았습니다" 만 남고 이유가 사라진다.
+  //    (실제로 그 상태에서 원인을 못 찾아 한참 헤맸다. 아래 sourceReplyDeliveryMode 가 그 원인이었다.)
   let dispatchInfo = "";
   try {
     const outcome = await channelRuntime.reply.withReplyDispatcher({
@@ -215,7 +214,27 @@ export async function handleMeosMessage(deps: HandleDeps, message: MeosPendingMe
           ctx: finalized,
           cfg,
           dispatcher,
-          replyOptions: { ...replyOptions, disableBlockStreaming: true },
+          replyOptions: {
+            ...replyOptions,
+            disableBlockStreaming: true,
+            // ⚠️ 이 한 줄이 없으면 **답이 통째로 버려진다.**
+            //
+            // core 는 최종 텍스트를 자동으로 넘길지(`automatic`), 에이전트가 `message` 도구를
+            // 직접 불러야 하는지(`message_tool_only`) 를 턴마다 정한다. 직접 대화이고
+            // `messages.visibleReplies` 가 없으면 **harness 기본값**이 그대로 먹는데,
+            // codex harness 는 `deliveryDefaults: { sourceVisibleReplies: "message_tool" }` 이다.
+            // 즉 OpenAI/codex 모델을 쓰는 순간 MeOS 는 자동 전달이 꺼진다.
+            //
+            // 그 모드에서 에이전트가 도구를 안 부르고 그냥 답하면 core 는 그 글을 조용히 버린다
+            // (`final reply suppressed by sourceReplyDeliveryMode: message_tool_only`, verbose 로그).
+            // 우리 deliver 가 한 번도 안 불리니 화면엔 "답하지 않았습니다" 만 남았다 — 실측한 증상이다.
+            //
+            // MeOS 의 계약은 "질문 하나 → 답 하나를 DB 에 저장" 이고, 그 저장을 하는 게 곧
+            // 이 dispatcher 의 deliver 다. 그러니 harness 가 뭐든 자동 전달이어야 맞다.
+            // 명시적으로 요청한 값은 harness 기본값보다 먼저 적용된다
+            // (source-reply-delivery-mode.ts — requested 를 가장 앞에서 반환한다).
+            sourceReplyDeliveryMode: "automatic",
+          },
         }),
     });
     dispatchInfo = describeDispatchOutcome(outcome);
