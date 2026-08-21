@@ -19,6 +19,18 @@
 
 > 위키 스키마/규칙 전체는 `LLM Wiki/CLAUDE.md` 참고. 커맨드: `/wiki-query`, `/wiki-ingest`, `/wiki-lint`.
 
+### 🔧 OpenClaw 플러그인 — 소스를 고치면 `dist/` 도 같은 커밋에
+
+`openclaw plugins install` 은 **TypeScript 를 빌드하지 않는다.** 폴더를 그대로 복사할 뿐이라
+`dist/` 가 낡으면 **설치가 "성공" 이라고 표시하면서 옛 코드가 그대로 깔린다**(조용해서 못 알아챈다 —
+2026-08-21 에 이걸로 오래 헤맸다).
+
+- `openclaw/plugins/*/dist/` 는 **저장소에 커밋한다**(루트 `.gitignore` 의 `dist/` 에 예외를 파 뒀다).
+- 빌드: `cd openclaw/plugins/<이름> && npm run build` (`tsc -p tsconfig.build.json`, `noCheck` — 내보내기 전용).
+- `.githooks/pre-commit` 이 자동으로 빌드해 커밋에 담는다. **새 클론에서는 한 번만**:
+  `git config core.hooksPath .githooks`
+- 설치본에 반영됐는지: `grep -rl <고친_코드_조각> ~/.openclaw/extensions/<이름>/`
+
 ## 핵심 사실 (요약)
 
 - **스택**: React + TS + Vite / Electron / Supabase(Postgres+Auth 매직링크). 차트 Recharts.

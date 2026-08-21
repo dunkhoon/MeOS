@@ -1,0 +1,40 @@
+#!/bin/sh
+# OpenClaw 플러그인 — 소스만 커밋되는 사고를 막는다.
+#
+# `openclaw plugins install` 은 TypeScript 를 빌드하지 않고 폴더를 그대로 복사한다.
+# 그래서 dist 가 낡으면 **설치는 성공했다고 말하면서 옛 코드가 그대로 깔린다.**
+# 조용해서 알아채기 어렵다(실제로 한참 헤맸다). 사람 주의력에 맡기지 않고 여기서 막는다.
+#
+# 스테이징에 플러그인 소스가 있으면 → 빌드 → dist 를 같은 커밋에 담는다.
+# 빌드가 실패하면 커밋을 중단한다.
+#
+# 설정(한 번만): git config core.hooksPath .githooks
+set -e
+
+root=$(git rev-parse --show-toplevel)
+
+changed=$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '^openclaw/plugins/[^/]+/(index\.ts|setup-entry\.ts|src/|tsconfig[^/]*\.json|package\.json)' || true)
+[ -z "$changed" ] && exit 0
+
+if [ -x "$root/node_modules/.bin/tsc" ]; then
+  TSC="$root/node_modules/.bin/tsc"
+else
+  # 루트에 없으면 npx 로. 없으면 조용히 넘어가지 말고 실패시킨다 —
+  # 못 만든 dist 를 그냥 통과시키는 게 이 훅이 막으려는 바로 그 사고다.
+  TSC="npx --no-install tsc"
+fi
+
+for plugin in $(printf '%s\n' "$changed" | cut -d/ -f1-3 | sort -u); do
+  if [ ! -f "$root/$plugin/tsconfig.build.json" ]; then
+    echo "pre-commit: $plugin 에 tsconfig.build.json 이 없습니다 — 빌드 방법을 알 수 없어 중단합니다." >&2
+    exit 1
+  fi
+  echo "pre-commit: $plugin 빌드 중…"
+  if ! (cd "$root/$plugin" && $TSC -p tsconfig.build.json); then
+    echo "pre-commit: $plugin 빌드 실패 — 커밋을 중단합니다." >&2
+    exit 1
+  fi
+  git add "$root/$plugin/dist"
+  echo "pre-commit: $plugin/dist 를 커밋에 포함했습니다."
+done

@@ -12,7 +12,14 @@
     "outDir": "./dist",
     "rootDir": ".",
     "declaration": false,
-    "sourceMap": false
+    "sourceMap": false,
+    // 타입 검사는 하지 않고 **내보내기만** 한다.
+    // 이 폴더에는 `openclaw`·`@types/node` 가 설치돼 있지 않아(설치기가 peerDependency 를
+    // 링크해 주는 구조라 개발 PC 에는 없다) 타입 해석이 실패한다. 그 실패로 빌드가 멈추면
+    // pre-commit 훅이 매번 막혀 결국 훅을 끄게 되고, 그러면 낡은 dist 사고가 그대로 돌아온다.
+    // 산출물은 타입 검사 여부와 무관하게 같다(실측: 두 결과가 바이트 단위로 동일).
+    // 진짜 타입 검사는 실제 SDK 를 설치한 자리에서 따로 한다.
+    "noCheck": true
   },
   "include": ["index.ts", "setup-entry.ts", "src/**/*.ts"]
 }
