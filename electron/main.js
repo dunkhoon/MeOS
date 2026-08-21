@@ -17,6 +17,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const { randomUUID } = require('node:crypto')
 const bts = require('./bts')
+const disk = require('./disk')
 const p4 = require('./p4')
 const llm = require('./llm')
 const review = require('./review')
@@ -885,6 +886,259 @@ ipcMain.handle('snippets:reveal', (_e, id) => {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
+})
+
+// ── 디스크 정리 (Windows 전용) ─────────────────────────────
+//
+// 스캔·판정은 disk.js(순수 Node)가 하고, 여기서는 세 가지만 맡는다.
+//   1) 오래 도는 작업의 진행 상황·취소 (스캔 하나가 수 분이다)
+//   2) 사내 LLM 호출 (Perforce 와 같은 접속 정보를 쓴다 — 경로 목록이 회사 밖으로 안 나간다)
+//   3) 실제 삭제 — **휴지통으로만** 보낸다
+//
+// ⚠️ 삭제는 화면이 보낸 목록을 믿지 않는다. 이번 세션에 스캔한 루트 안인지, 보호 대상은
+//    아닌지 여기서 다시 검사한다. AI 가 무슨 말을 했든 이 관문은 통과해야 한다.
+const diskRuns = new Map() // runId → {cancelled}
+/** 이번에 스캔한 루트들. 삭제 허용 범위의 근거다(앱을 켠 뒤 스캔한 곳만 지울 수 있다). */
+const diskScanned = new Set()
+
+function diskCfgPath() {
+  return path.join(app.getPath('userData'), 'pp-disk.json')
+}
+
+function resolveDiskConfig() {
+  const saved = readJson(diskCfgPath(), {})
+  const p4cfg = resolveP4Config()
+  return {
+    lastRoot: (saved.lastRoot || '').trim(),
+    maxDepth: Math.min(8, Math.max(1, Number(saved.maxDepth) || 3)),
+    skipSystem: saved.skipSystem !== false,
+    model: (saved.model || '').trim() || p4cfg.model,
+    llm: p4cfg.llm,
+  }
+}
+
+ipcMain.handle('disk:getConfig', async () => {
+  const cfg = resolveDiskConfig()
+  return {
+    platformOk: process.platform === 'win32',
+    lastRoot: cfg.lastRoot,
+    maxDepth: cfg.maxDepth,
+    skipSystem: cfg.skipSystem,
+    model: cfg.model,
+    llmReady: !!(cfg.llm.baseUrl && cfg.llm.apiKey),
+    drives: await disk.listDrives(),
+  }
+})
+
+ipcMain.handle('disk:setConfig', (_e, cfg) => {
+  if (!cfg || typeof cfg !== 'object') return { ok: false, error: '잘못된 설정' }
+  writeJson(diskCfgPath(), {
+    lastRoot: (cfg.lastRoot || '').trim(),
+    maxDepth: Math.min(8, Math.max(1, Number(cfg.maxDepth) || 3)),
+    skipSystem: cfg.skipSystem !== false,
+    model: (cfg.model || '').trim(),
+  })
+  return { ok: true }
+})
+
+ipcMain.handle('disk:pickDir', async () => {
+  const cur = resolveDiskConfig().lastRoot
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: '스캔할 폴더 (드라이브를 고르면 전체를 훑습니다)',
+    defaultPath: cur && fs.existsSync(cur) ? cur : app.getPath('home'),
+    properties: ['openDirectory'],
+  })
+  if (r.canceled || !r.filePaths.length) return { ok: false }
+  return { ok: true, dir: r.filePaths[0] }
+})
+
+/**
+ * 폴더 스캔. 무거운 동기 작업이라 도는 동안 이 프로세스는 다른 IPC 를 못 받는다 —
+ * 그래서 취소 신호는 미리 만들어 둔 객체를 통해 전달한다(disk:cancel 이 그 값을 바꾼다).
+ *
+ * ⚠️ 진행 상황을 sender 로 보내는 것도 같은 이유로 setImmediate 없이 동기 흐름 안에서 나간다.
+ *    Electron 은 send 를 큐에 넣어 주므로 스캔이 끝난 뒤 한꺼번에 도착할 수 있다 —
+ *    화면에서는 "마지막 값" 만 의미 있게 쓴다.
+ */
+ipcMain.handle('disk:scan', async (e, payload) => {
+  const { runId, root, maxDepth, skipSystem } = payload || {}
+  if (process.platform !== 'win32') return { ok: false, error: '이 기능은 Windows 에서만 동작합니다.' }
+  if (!root || !fs.existsSync(root)) return { ok: false, error: '폴더를 찾을 수 없습니다.' }
+
+  const state = { cancelled: false }
+  diskRuns.set(runId, state)
+  const send = (phase, data) => {
+    if (!e.sender.isDestroyed()) e.sender.send('disk:progress', { runId, phase, ...data })
+  }
+
+  try {
+    send('start', { root })
+    const scan = await disk.scanTree(root, {
+      maxDepth: Math.min(8, Math.max(1, Number(maxDepth) || 3)),
+      skipSystem: skipSystem !== false,
+      state,
+      onProgress: (p) => send('scan', p),
+    })
+    if (!scan.node) return { ok: false, error: '폴더를 읽지 못했습니다(권한 확인).' }
+    if (scan.cancelled) return { ok: false, cancelled: true }
+
+    const candidates = disk.collectCandidates(scan)
+    const unknowns = disk.unknownBigDirs(scan, candidates)
+    const old = disk.oldBigDirs(scan)
+    diskScanned.add(root)
+
+    writeJson(diskCfgPath(), { ...readJson(diskCfgPath(), {}), lastRoot: root })
+    send('done', {})
+    return {
+      ok: true,
+      root,
+      tree: scan.node,
+      stats: scan.stats,
+      projects: scan.projects,
+      engines: scan.engines,
+      exts: scan.exts.slice(0, 40),
+      bigFiles: scan.bigFiles,
+      ages: scan.ages,
+      oldDirs: old,
+      candidates,
+      unknowns,
+    }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    diskRuns.delete(runId)
+  }
+})
+
+/** 중복 파일 — 디스크를 실제로 읽는 단계가 있어 스캔과 따로 돌린다. */
+ipcMain.handle('disk:duplicates', async (e, payload) => {
+  const { runId, root, minMB } = payload || {}
+  if (!root || !fs.existsSync(root)) return { ok: false, error: '폴더를 찾을 수 없습니다.' }
+  const state = { cancelled: false }
+  diskRuns.set(runId, state)
+  try {
+    const r = await disk.findDuplicates(root, {
+      minBytes: Math.max(1, Number(minMB) || 8) * 1024 * 1024,
+      state,
+      onProgress: (p) => {
+        if (!e.sender.isDestroyed()) e.sender.send('disk:progress', { runId, phase: 'dup', ...p })
+      },
+    })
+    if (r.cancelled) return { ok: false, cancelled: true }
+    diskScanned.add(root)
+    return { ok: true, ...r }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    diskRuns.delete(runId)
+  }
+})
+
+ipcMain.handle('disk:cancel', (_e, runId) => {
+  const st = diskRuns.get(runId)
+  if (!st) return { ok: false, error: '진행 중인 작업이 없습니다.' }
+  st.cancelled = true
+  return { ok: true }
+})
+
+/** 정리 후보를 사내 LLM 에게 판정시킨다. 보내는 건 경로·크기뿐 — 파일 내용은 안 나간다. */
+ipcMain.handle('disk:judge', async (_e, payload) => {
+  const cfg = resolveDiskConfig()
+  if (!cfg.llm.baseUrl || !cfg.llm.apiKey) {
+    return { ok: false, error: 'LLM 접속 정보가 없습니다. Perforce 설정에서 사내 LLM 을 먼저 설정하세요.' }
+  }
+  // 실제 UE 프로젝트를 스캔하면 후보가 70건을 넘는다(플러그인마다 Intermediate·Binaries).
+  // 전부 물으면 답이 max_tokens 에서 잘려 절반이 판정 없이 돌아온다 — 큰 것부터 끊는다.
+  const JUDGE_LIMIT = 40
+  const all = Array.isArray(payload?.candidates) ? payload.candidates : []
+  const candidates = all.slice().sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, JUDGE_LIMIT)
+  const unknowns = (Array.isArray(payload?.unknowns) ? payload.unknowns : []).slice(0, 12)
+  if (!candidates.length && !unknowns.length) return { ok: false, error: '판정할 항목이 없습니다.' }
+
+  const prompt = disk.buildJudgePrompt({
+    candidates,
+    unknowns,
+    projects: payload?.projects || [],
+    engines: payload?.engines || [],
+    drive: payload?.drive || null,
+  })
+  try {
+    const res = await llm.chat(cfg.llm, {
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: disk.JUDGE_SYSTEM },
+        { role: 'user', content: prompt },
+      ],
+      maxTokens: 6000,
+      jsonMode: true,
+      timeoutMs: 240000,
+    })
+    // ⚠️ extractJson 은 **문자열**을 돌려준다(코드펜스·잡소리를 걷어낸 JSON 본문).
+    //    파싱은 여기서 한다 — 모델은 jsonMode 를 켜도 ```json 펜스를 붙여 보낸다(실측).
+    let json = null
+    try {
+      json = JSON.parse(llm.extractJson(res.content))
+    } catch {
+      /* 아래에서 처리 */
+    }
+    if (!json || !Array.isArray(json.verdicts)) {
+      return { ok: false, error: 'LLM 응답을 읽지 못했습니다.', raw: String(res.content || '').slice(0, 400) }
+    }
+    // 규칙 항목과 정체불명 항목을 한 번에 물었으니, 합칠 때도 한 번에 합친다
+    const merged = disk.mergeVerdicts(
+      [...candidates, ...unknowns.map((u) => ({ ...u, source: 'unknown', risk: 'caution' }))],
+      json.verdicts,
+    )
+    // 잘려 나간 후보는 규칙 판정 그대로 돌려준다 — 목록에서 사라지면 안 된다
+    const rest = all.filter((c) => !candidates.some((x) => disk.norm(x.path) === disk.norm(c.path)))
+    return {
+      ok: true,
+      items: [...merged, ...rest],
+      judged: candidates.length + unknowns.length,
+      skipped: all.length - candidates.length,
+      model: res.model,
+      usage: res.usage,
+      promptChars: prompt.length,
+    }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+})
+
+/** 휴지통으로 보낸다. 영구 삭제는 하지 않는다 — 되돌릴 수 없는 동작을 자동 판단 뒤에 두지 않는다. */
+ipcMain.handle('disk:trash', async (_e, payload) => {
+  // [{path, size}] — size 는 스캔 때 이미 잰 값이다. 여기서 다시 재지 않는다:
+  // 224GB Intermediate 를 지우기 전에 크기를 다시 세면 삭제가 시작되기까지 수십 초가 걸린다.
+  // (표시용 숫자라 화면이 준 값을 그대로 쓴다 — 삭제 여부는 아래 검증이 따로 정한다)
+  const items = Array.isArray(payload?.items) ? payload.items : []
+  if (!items.length) return { ok: false, error: '지울 항목이 없습니다.' }
+  const roots = [...diskScanned]
+  const results = []
+  let freed = 0
+  for (const it of items) {
+    const p = typeof it === 'string' ? it : it && it.path
+    const size = (typeof it === 'object' && Number(it.size)) || 0
+    const bad = disk.validateDeletion(p, roots)
+    if (bad) {
+      results.push({ path: p, ok: false, error: bad })
+      continue
+    }
+    try {
+      await shell.trashItem(p)
+      freed += size
+      results.push({ path: p, ok: true, size })
+    } catch (err) {
+      // 쓰는 중인 파일(에디터가 물고 있는 로그 등)은 여기서 실패한다 — 흔한 일이라 그대로 알린다
+      results.push({ path: p, ok: false, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  return { ok: results.some((r) => r.ok), results, freed }
+})
+
+ipcMain.handle('disk:reveal', async (_e, p) => {
+  if (!p || typeof p !== 'string') return { ok: false, error: '경로가 없습니다.' }
+  shell.showItemInFolder(p)
+  return { ok: true }
 })
 
 // 창 컨트롤 (커스텀 타이틀바)

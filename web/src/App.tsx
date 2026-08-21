@@ -10,6 +10,7 @@ import Exercise from './pages/Exercise'
 import ActivityDetail from './pages/ActivityDetail'
 import Report from './pages/Report'
 import Perforce from './pages/Perforce'
+import Disk from './pages/Disk'
 import Trash from './pages/Trash'
 import Settings from './pages/Settings'
 import Assistant from './pages/Assistant'
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/assistant" element={<Assistant />} />
               <Route path="/report" element={<Report />} />
               <Route path="/perforce" element={<Perforce />} />
+              <Route path="/disk" element={<Disk />} />
               <Route path="/trash" element={<Trash />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />

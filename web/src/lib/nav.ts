@@ -43,6 +43,13 @@ export const NAV: NavEntry[] = [
     desktopOnly: true,
     keywords: ['퍼포스', 'p4', '체인지리스트', 'cl', '서밋', 'submit'],
   },
+  {
+    to: '/disk',
+    label: '디스크 정리',
+    icon: '▬',
+    desktopOnly: true,
+    keywords: ['disk', '하드', '용량', '정리', 'cleanup', 'treesize', '중복', 'ue', '언리얼'],
+  },
   { to: '/exercise', label: '운동', icon: '◠', keywords: ['exercise', '활동', '훈련', 'intervals'] },
   {
     to: '/assistant',

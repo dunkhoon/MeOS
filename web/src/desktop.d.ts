@@ -201,6 +201,113 @@ interface ReviewProgress {
   reviewers?: string[]
 }
 
+// ── 디스크 정리 (Windows 전용) ───────────────────────────────
+
+interface DiskDrive {
+  drive: string // 'C:'
+  label: string
+  fileSystem: string
+  total: number
+  free: number
+}
+
+/** 폴더 트리 한 칸. children 은 maxDepth 까지만 채워진다(크기는 전체를 다 센 값). */
+interface DiskNode {
+  path: string
+  name: string
+  size: number
+  files: number
+  mtime: number
+  children: DiskNode[]
+  /** 상위 N 개 밖의 폴더들을 접어 놓은 줄 */
+  rest?: boolean
+}
+
+type DiskRisk = 'safe' | 'caution' | 'keep'
+
+/** 정리 후보 한 건. risk 는 규칙 판정이고, ai 가 붙으면 더 조여진 값이 risk 에 반영돼 있다. */
+interface DiskCandidate {
+  path: string
+  size: number
+  files: number
+  mtime: number
+  risk: DiskRisk
+  /** 규칙이 알아본 종류. 규칙이 모르는 큰 폴더(source='unknown')는 비어 있다. */
+  kind?: string
+  why?: string
+  cost?: string
+  project?: string | null
+  source: 'rule' | 'unknown'
+  ai?: { risk: DiskRisk; reason: string; cost: string } | null
+}
+
+interface DiskExtRow {
+  ext: string
+  size: number
+  files: number
+}
+
+interface DiskFileRow {
+  path: string
+  size: number
+  mtime: number
+}
+
+interface DiskAgeRow {
+  key: string
+  label: string
+  size: number
+  files: number
+}
+
+interface DiskScanResult {
+  ok: boolean
+  error?: string
+  cancelled?: boolean
+  root?: string
+  tree?: DiskNode
+  stats?: { dirs: number; files: number; bytes: number; skipped: number; denied: number; elapsedMs: number }
+  projects?: string[]
+  engines?: string[]
+  exts?: DiskExtRow[]
+  bigFiles?: DiskFileRow[]
+  ages?: DiskAgeRow[]
+  oldDirs?: DiskFileRow[]
+  candidates?: DiskCandidate[]
+  unknowns?: DiskFileRow[]
+}
+
+interface DiskDupGroup {
+  size: number
+  count: number
+  /** 한 개만 남기고 지웠을 때 비는 용량 */
+  wasted: number
+  files: string[]
+}
+
+interface DiskProgress {
+  runId: string
+  phase: 'start' | 'scan' | 'dup' | 'done'
+  current?: string
+  dirs?: number
+  files?: number
+  bytes?: number
+  scanned?: number
+  hashed?: number
+  readBytes?: number
+  elapsedMs?: number
+}
+
+interface DiskConfig {
+  platformOk: boolean
+  lastRoot: string
+  maxDepth: number
+  skipSystem: boolean
+  model: string
+  llmReady: boolean
+  drives: DiskDrive[]
+}
+
 interface AppInfo {
   /** 지금 띄우고 있는 주소 */
   url: string
@@ -285,6 +392,38 @@ interface DesktopBridge {
     openFile: (file: string) => Promise<{ ok: boolean; error?: string }>
     /** 해제 함수를 돌려준다 */
     onProgress: (cb: (msg: ReviewProgress) => void) => () => void
+  }
+  disk: {
+    getConfig: () => Promise<DiskConfig>
+    setConfig: (cfg: { lastRoot?: string; maxDepth: number; skipSystem: boolean; model?: string }) => Promise<{ ok: boolean; error?: string }>
+    pickDir: () => Promise<{ ok: boolean; dir?: string }>
+    scan: (payload: { runId: string; root: string; maxDepth: number; skipSystem: boolean }) => Promise<DiskScanResult>
+    duplicates: (payload: { runId: string; root: string; minMB: number }) => Promise<{
+      ok: boolean
+      error?: string
+      cancelled?: boolean
+      groups?: DiskDupGroup[]
+      groupCount?: number
+      wastedTotal?: number
+    }>
+    cancel: (runId: string) => Promise<{ ok: boolean; error?: string }>
+    judge: (payload: {
+      candidates: DiskCandidate[]
+      unknowns: DiskFileRow[]
+      projects: string[]
+      engines: string[]
+      drive: DiskDrive | null
+    }) => Promise<{ ok: boolean; error?: string; items?: DiskCandidate[]; model?: string; promptChars?: number }>
+    /** 언제나 휴지통으로 보낸다. size 는 표시용(스캔 때 잰 값) — 삭제 허용 여부는 main 이 따로 검사한다. */
+    trash: (items: { path: string; size: number }[]) => Promise<{
+      ok: boolean
+      error?: string
+      freed?: number
+      results?: { path: string; ok: boolean; size?: number; error?: string }[]
+    }>
+    reveal: (path: string) => Promise<{ ok: boolean; error?: string }>
+    /** 해제 함수를 돌려준다 */
+    onProgress: (cb: (msg: DiskProgress) => void) => () => void
   }
   bts: {
     getConfig: () => Promise<BtsConfig>

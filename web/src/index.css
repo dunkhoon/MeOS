@@ -6002,3 +6002,327 @@ button.st-row:hover .st-row-edit {
     padding: 1px 4px;
   }
 }
+
+/* ══ 디스크 정리 (PC 전용) ═════════════════════════════════
+   화면이 세로로 길다 — 드라이브 → 스캔 → 정리 후보 → 상세 뷰 순서가 곧 사용 순서다. */
+
+.dk-drives {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.dk-drive {
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dk-drive:hover {
+  border-color: var(--accent);
+}
+.dk-drive.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.dk-drive-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.dk-drive-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+/* 남은 용량 막대 — 꽉 찰수록 붉어진다. 이 화면을 여는 이유가 대개 이것이다. */
+.dk-bar {
+  height: 8px;
+  background: var(--bg-elev);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dk-bar-fill {
+  height: 100%;
+  background: var(--h-green);
+}
+.dk-drive.warn .dk-bar-fill {
+  background: var(--h-yellow);
+}
+.dk-drive.full .dk-bar-fill {
+  background: var(--h-red);
+}
+
+.dk-run-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dk-path {
+  flex: 1;
+  min-width: 220px;
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12.5px;
+}
+.dk-opt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dk-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+/* 지금 읽는 경로 — 길어도 한 줄을 넘지 않게 (넘치면 카드가 흔들린다) */
+.dk-cur {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* 경로는 뒤쪽이 중요하다 */
+  text-align: left;
+}
+.dk-stat {
+  margin: 10px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.dk-err {
+  white-space: pre-wrap;
+}
+
+/* ── 정리 후보 ── */
+.dk-pickbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.dk-cands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dk-cand {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+.dk-cand.risk-safe {
+  border-left-color: var(--ok);
+}
+.dk-cand.risk-caution {
+  border-left-color: var(--warn);
+}
+.dk-cand.risk-keep {
+  border-left-color: var(--danger);
+  opacity: 0.75;
+}
+.dk-cand.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.dk-cand.nested {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 4px 0;
+}
+.dk-cb {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.dk-cand-main {
+  flex: 1;
+  min-width: 0;
+}
+.dk-cand-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dk-cand-size {
+  font-variant-numeric: tabular-nums;
+}
+.dk-cand-path {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.dk-cand-why,
+.dk-cand-cost {
+  margin-top: 2px;
+  line-height: 1.45;
+}
+.dk-cand-ai {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--border);
+}
+.dk-cand-kids {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+.chip.dk-risk.safe {
+  background: color-mix(in srgb, var(--h-green) 18%, transparent);
+  color: var(--ink-green);
+}
+.chip.dk-risk.caution {
+  background: color-mix(in srgb, var(--h-yellow) 18%, transparent);
+  color: var(--ink-yellow);
+}
+.chip.dk-risk.keep {
+  background: color-mix(in srgb, var(--h-red) 18%, transparent);
+  color: var(--ink-red);
+}
+
+/* ── 폴더 트리 ── */
+.dk-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 5px;
+  font-size: 12.5px;
+}
+.dk-tree-row.has {
+  cursor: pointer;
+}
+.dk-tree-row:hover {
+  background: var(--bg-elev);
+}
+.dk-tree-caret {
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.dk-tree-name {
+  flex: 0 1 260px;
+  min-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dk-tree-bar {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  background: var(--bg-elev);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.dk-tree-fill {
+  display: block;
+  height: 100%;
+  background: var(--h-blue);
+}
+.dk-tree-pct,
+.dk-tree-files {
+  flex-shrink: 0;
+  width: 52px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dk-tree-size {
+  flex-shrink: 0;
+  width: 72px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 파일 목록 · 중복 ── */
+.dk-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dk-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12.5px;
+  border-top: 1px solid var(--border);
+}
+.dk-file-size {
+  width: 72px;
+  flex-shrink: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dk-file-date {
+  width: 78px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dk-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+  color: var(--muted);
+}
+.dk-dup {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.dk-dup-head {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.dk-dup-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  /* PC 전용 화면이지만 창을 좁혀 쓸 수 있다 — 트리는 이름·크기만 남긴다 */
+  .dk-tree-bar,
+  .dk-tree-files {
+    display: none;
+  }
+  .dk-tree-name {
+    flex: 1;
+  }
+}

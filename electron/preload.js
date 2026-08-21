@@ -76,6 +76,26 @@ contextBridge.exposeInMainWorld('desktop', {
     },
   },
 
+  // 디스크 정리 (Windows 전용) — 스캔·중복찾기는 오래 걸려 진행 상황을 따로 흘려보낸다.
+  // 삭제는 언제나 휴지통이며, main 이 스캔한 루트 안인지 다시 검사한다.
+  disk: {
+    getConfig: () => ipcRenderer.invoke('disk:getConfig'),
+    setConfig: (cfg) => ipcRenderer.invoke('disk:setConfig', cfg),
+    pickDir: () => ipcRenderer.invoke('disk:pickDir'),
+    scan: (payload) => ipcRenderer.invoke('disk:scan', payload),
+    duplicates: (payload) => ipcRenderer.invoke('disk:duplicates', payload),
+    cancel: (runId) => ipcRenderer.invoke('disk:cancel', runId),
+    judge: (payload) => ipcRenderer.invoke('disk:judge', payload),
+    trash: (items) => ipcRenderer.invoke('disk:trash', { items }),
+    reveal: (p) => ipcRenderer.invoke('disk:reveal', p),
+    // 진행 상황 구독. 해제 함수를 돌려준다.
+    onProgress: (cb) => {
+      const h = (_e, msg) => cb(msg)
+      ipcRenderer.on('disk:progress', h)
+      return () => ipcRenderer.removeListener('disk:progress', h)
+    },
+  },
+
   // BTS (Redmine / JIRA) — 데스크톱 전용 실시간 조회. 결과는 메모리로만 전달된다.
   bts: {
     getConfig: () => ipcRenderer.invoke('bts:getConfig'),
