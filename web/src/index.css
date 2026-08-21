@@ -6326,3 +6326,150 @@ button.st-row:hover .st-row-edit {
     flex: 1;
   }
 }
+
+/* ── 트리 깊이 도움말 (? 버튼) ── */
+.dk-help {
+  position: relative;
+  display: inline-flex;
+}
+.dk-help-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.dk-help-btn:hover,
+.dk-help-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--ink-accent);
+}
+/* 바깥 클릭을 받는 투명 판. 팝오버보다 아래에 깔린다 */
+.dk-help-back {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.dk-help-pop {
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 41;
+  display: block;
+  width: min(420px, 80vw);
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: normal;
+  text-align: left;
+  color: var(--text);
+}
+.dk-help-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.dk-help-pop p {
+  margin: 0 0 8px;
+}
+.dk-help-rows {
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--bg-elev);
+  border-radius: 8px;
+}
+.dk-help-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+}
+.dk-help-row.on {
+  color: var(--ink-accent);
+  font-weight: 600;
+}
+.dk-help-n {
+  flex-shrink: 0;
+  width: 44px;
+  font-variant-numeric: tabular-nums;
+}
+.dk-help-row code {
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+/* ── 지난 스캔 ── */
+.dk-hist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dk-hist-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+}
+.dk-hist-row.on {
+  background: var(--accent-soft);
+  border-radius: 6px;
+}
+.dk-hist-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 6px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.dk-hist-when {
+  flex-shrink: 0;
+  width: 78px;
+  font-variant-numeric: tabular-nums;
+}
+.dk-hist-root {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+}
+.dk-hist-size,
+.dk-hist-cand {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dk-hist-meta {
+  flex-shrink: 0;
+}
+.dk-hist-row:hover .row-x {
+  opacity: 1;
+}
+
+@media (max-width: 900px) {
+  /* 좁아지면 부가 정보부터 접는다 — 시각·경로·후보량이 핵심 */
+  .dk-hist-meta,
+  .dk-hist-size {
+    display: none;
+  }
+}

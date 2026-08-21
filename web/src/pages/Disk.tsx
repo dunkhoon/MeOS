@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CollapsibleCard } from '../components/CollapsibleCard'
-import { fmtBytes, groupCandidates, pathsOf, riskLabel, sortTree, totalOf, type CandRow } from '../lib/disk'
+import { fmtBytes, fmtWhen, groupCandidates, pathsOf, riskLabel, sortTree, totalOf, type CandRow } from '../lib/disk'
 
 // 디스크 정리 — PC 전용.
 //
@@ -41,8 +41,14 @@ export default function Disk() {
   const [dups, setDups] = useState<{ groups: DiskDupGroup[]; wastedTotal: number; groupCount: number } | null>(null)
   const [dupMinMB, setDupMinMB] = useState(8)
 
+  /** 지난 스캔 목록. 지금 보고 있는 것이 어느 이력인지도 같이 들고 있는다. */
+  const [history, setHistory] = useState<DiskHistoryItem[]>([])
+  const [viewing, setViewing] = useState<DiskHistoryItem | null>(null)
+
   const runId = useRef<string>('')
 
+  // 켤 때: 설정 + 지난 스캔 목록을 읽고, **가장 최근 스캔을 도로 펼친다.**
+  // 스캔 한 번이 몇 분이라 탭을 옮겼다 왔다고 결과가 사라지면 안 된다.
   useEffect(() => {
     if (!window.desktop?.disk) return
     void (async () => {
@@ -51,7 +57,12 @@ export default function Disk() {
       setMaxDepth(c.maxDepth)
       setSkipSystem(c.skipSystem)
       setRoot(c.lastRoot || (c.drives[0] ? `${c.drives[0].drive}\\` : ''))
+
+      const h = await window.desktop!.disk.history()
+      setHistory(h.items ?? [])
+      if (h.items?.length) void openHistory(h.items[0].id, { silent: true })
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 진행 상황 — 스캔이 도는 동안 main 이 흘려보낸다
@@ -69,6 +80,39 @@ export default function Disk() {
   const pick = async () => {
     const r = await window.desktop?.disk.pickDir()
     if (r?.ok && r.dir) setRoot(r.dir)
+  }
+
+  /** 지난 스캔을 화면에 펼친다. silent 면 안내문을 띄우지 않는다(켤 때 자동 복원). */
+  const openHistory = async (id: string, opts?: { silent?: boolean }) => {
+    const r = await window.desktop?.disk.historyRead(id)
+    if (!r?.ok || !r.scan) {
+      if (!opts?.silent) setErr(r?.error ?? '이력을 읽지 못했습니다.')
+      return
+    }
+    const s = r.scan
+    setScan(s)
+    setItems(s.candidates ?? [])
+    setPicked(new Set())
+    setJudged(null)
+    setDups(null)
+    if (s.root) setRoot(s.root)
+    setHistory((prev) => {
+      setViewing(prev.find((h) => h.id === id) ?? null)
+      return prev
+    })
+    if (!opts?.silent) setNotice(null)
+  }
+
+  const removeHistory = async (id: string) => {
+    await window.desktop?.disk.historyRemove(id)
+    const h = await window.desktop?.disk.history()
+    setHistory(h?.items ?? [])
+    if (viewing?.id === id) {
+      setViewing(null)
+      setScan(null)
+      setItems([])
+      setPicked(new Set())
+    }
   }
 
   const runScan = async () => {
@@ -95,6 +139,10 @@ export default function Disk() {
       // 규칙이 안전하다고 본 것만 미리 체크한다. caution 은 사람이 직접 고르게 둔다.
       setPicked(new Set((r.candidates ?? []).filter((c) => c.risk === 'safe').map((c) => c.path)))
       void window.desktop!.disk.setConfig({ lastRoot: root, maxDepth, skipSystem })
+      // 방금 스캔이 이력 맨 앞에 붙는다
+      const h = await window.desktop!.disk.history()
+      setHistory(h.items ?? [])
+      setViewing(r.saved ?? h.items?.[0] ?? null)
     } catch (e) {
       setErr(errMsg(e))
     } finally {
@@ -283,7 +331,7 @@ export default function Disk() {
             폴더 고르기
           </button>
           <label className="dk-opt">
-            깊이
+            트리 깊이
             <select className="st-select" value={maxDepth} onChange={(e) => setMaxDepth(Number(e.target.value))}>
               {[2, 3, 4, 5, 6].map((n) => (
                 <option key={n} value={n}>
@@ -292,6 +340,7 @@ export default function Disk() {
               ))}
             </select>
           </label>
+          <DepthHelp root={root} depth={maxDepth} />
           <label className="dk-opt" title="C:\Windows·Program Files 는 건너뛴다 (정리 대상이 아니고, 스캔만 오래 걸린다)">
             <input type="checkbox" checked={skipSystem} onChange={(e) => setSkipSystem(e.target.checked)} />
             시스템 폴더 제외
@@ -331,9 +380,56 @@ export default function Disk() {
             {fmtBytes(scan.tree?.size ?? 0)} · {Math.round(scan.stats.elapsedMs / 1000)}초
             {scan.stats.denied > 0 && ` · 권한 없어 건너뜀 ${scan.stats.denied}`}
             {scan.projects?.length ? ` · UE 프로젝트 ${scan.projects.length}개` : ''}
+            {viewing && ` · ${fmtWhen(viewing.at)} 스캔`}
           </p>
         )}
       </div>
+
+      {/* ── 지난 스캔 ── */}
+      {history.length > 0 && (
+        <CollapsibleCard
+          id="dk-history"
+          title={
+            <>
+              <span className="sec-dot" /> 지난 스캔
+            </>
+          }
+          actions={
+            <>
+              <span className="muted small">{history.length}건 보관</span>
+              <button className="link-btn small" onClick={() => void window.desktop?.disk.historyOpenDir()}>
+                폴더 열기
+              </button>
+            </>
+          }
+        >
+          <p className="muted small">
+            끝난 스캔은 자동으로 남습니다. 화면을 옮겼다 와도, 앱을 껐다 켜도 그대로 있습니다(최근 {20}건 보관).
+          </p>
+          <div className="dk-hist">
+            {history.map((h) => (
+              <div key={h.id} className={`dk-hist-row ${viewing?.id === h.id ? 'on' : ''}`}>
+                <button type="button" className="dk-hist-main" onClick={() => void openHistory(h.id)}>
+                  <span className="dk-hist-when">{fmtWhen(h.at)}</span>
+                  <span className="dk-hist-root" title={h.root}>
+                    {h.root}
+                  </span>
+                  <span className="dk-hist-size">{fmtBytes(h.totalBytes)}</span>
+                  <span className="muted small dk-hist-meta">
+                    파일 {h.files.toLocaleString()} · {Math.round(h.elapsedMs / 1000)}초
+                  </span>
+                  <span className="dk-hist-cand">
+                    후보 {h.candidateCount}건 · <b>{fmtBytes(h.safeBytes)}</b> 안전
+                  </span>
+                </button>
+                <button className="row-x" title="이 이력 지우기" onClick={() => void removeHistory(h.id)}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </CollapsibleCard>
+      )}
 
       {scan && (
         <>
@@ -486,6 +582,75 @@ export default function Disk() {
         </>
       )}
     </div>
+  )
+}
+
+// ── 트리 깊이 설명 ───────────────────────────────────────────
+//
+// "깊이" 를 스캔 범위로 오해하기 쉽다(깊이를 줄이면 덜 훑는 줄 안다). 실제로는 **언제나
+// 끝까지 다 세고**, 이 값은 결과 트리를 몇 단계까지 펼쳐 보여줄지만 정한다. 그 오해를
+// 푸는 게 이 도움말의 목적이다.
+function DepthHelp({ root, depth }: { root: string; depth: number }) {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const base = (root || 'D:\\').replace(/\\+$/, '')
+  const rows = [
+    { n: 1, path: `${base}\\Work`, note: '루트 바로 아래 폴더까지' },
+    { n: 2, path: `${base}\\Work\\TT`, note: '' },
+    { n: 3, path: `${base}\\Work\\TT\\Trunk`, note: '기본값' },
+    { n: 4, path: `${base}\\Work\\TT\\Trunk\\Client`, note: '' },
+  ]
+
+  return (
+    <span className="dk-help">
+      <button
+        type="button"
+        className="dk-help-btn"
+        aria-label="트리 깊이 설명"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        ?
+      </button>
+      {open && (
+        <>
+          {/* 바깥을 누르면 닫힌다 */}
+          <span className="dk-help-back" onClick={() => setOpen(false)} />
+          <span className="dk-help-pop" role="dialog" aria-label="트리 깊이 설명">
+            <b className="dk-help-title">트리 깊이</b>
+            <p>
+              <b>스캔은 언제나 끝까지 다 셉니다.</b> 이 값은 결과의 &lsquo;폴더별 용량&rsquo; 트리를 몇 단계까지 펼쳐
+              보여줄지만 정합니다.
+            </p>
+            <p className="muted">
+              스캔에 걸리는 시간, 용량 합계, 정리 후보 찾기에는 <b>영향이 없습니다.</b> 깊은 곳에 있는 Intermediate 도
+              깊이 2로 스캔하든 6으로 하든 똑같이 찾아냅니다.
+            </p>
+            <div className="dk-help-rows">
+              {rows.map((r) => (
+                <div key={r.n} className={`dk-help-row ${r.n === depth ? 'on' : ''}`}>
+                  <span className="dk-help-n">{r.n}단계</span>
+                  <code>{r.path}</code>
+                  {r.note && <span className="muted small">{r.note}</span>}
+                </div>
+              ))}
+              <div className="dk-help-row muted small">5·6단계 — 더 깊이까지 펼쳐 봅니다</div>
+            </div>
+            <p className="muted small">
+              깊을수록 트리가 커져 화면이 무거워집니다(한 단계마다 최대 12배). 우선 3단계로 보고, 특정 폴더 안을 더 들여다볼
+              때 올리세요.
+            </p>
+          </span>
+        </>
+      )}
+    </span>
   )
 }
 

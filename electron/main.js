@@ -18,6 +18,7 @@ const os = require('node:os')
 const { randomUUID } = require('node:crypto')
 const bts = require('./bts')
 const disk = require('./disk')
+const diskStore = require('./diskStore')
 const p4 = require('./p4')
 const llm = require('./llm')
 const review = require('./review')
@@ -904,6 +905,10 @@ const diskScanned = new Set()
 function diskCfgPath() {
   return path.join(app.getPath('userData'), 'pp-disk.json')
 }
+/** 스캔 이력 폴더 (스캔 1회 = json 두 벌). */
+function diskDir() {
+  return path.join(app.getPath('userData'), 'disk-scans')
+}
 
 function resolveDiskConfig() {
   const saved = readJson(diskCfgPath(), {})
@@ -989,7 +994,7 @@ ipcMain.handle('disk:scan', async (e, payload) => {
 
     writeJson(diskCfgPath(), { ...readJson(diskCfgPath(), {}), lastRoot: root })
     send('done', {})
-    return {
+    const result = {
       ok: true,
       root,
       tree: scan.node,
@@ -1003,11 +1008,39 @@ ipcMain.handle('disk:scan', async (e, payload) => {
       candidates,
       unknowns,
     }
+
+    // 끝난 스캔은 무조건 남긴다. 화면을 옮겼다 와도 다시 6분을 쓰지 않도록,
+    // 그리고 지난 스캔과 비교할 수 있도록. (저장 실패가 스캔 결과를 버리게 두지 않는다)
+    try {
+      result.saved = diskStore.save(diskDir(), result)
+    } catch (e) {
+      console.error('[disk] 이력 저장 실패', e.message)
+    }
+    return result
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   } finally {
     diskRuns.delete(runId)
   }
+})
+
+// ── 스캔 이력 ──────────────────────────────────────────────
+ipcMain.handle('disk:history', () => ({ ok: true, dir: diskDir(), items: diskStore.list(diskDir()) }))
+
+ipcMain.handle('disk:historyRead', (_e, id) => {
+  const r = diskStore.read(diskDir(), id)
+  if (!r) return { ok: false, error: '이력을 찾을 수 없습니다.' }
+  // 지난 스캔을 불러와도 그 안의 항목을 지울 수 있어야 한다 —
+  // 삭제 허용 범위(이번 세션에 스캔한 루트)에 그 루트를 다시 넣어 준다.
+  if (r.root) diskScanned.add(r.root)
+  return { ok: true, scan: r }
+})
+
+ipcMain.handle('disk:historyRemove', (_e, id) => ({ ok: diskStore.remove(diskDir(), id) }))
+
+ipcMain.handle('disk:historyOpenDir', async () => {
+  const err = await shell.openPath(diskStore.ensureDir(diskDir()))
+  return { ok: !err, error: err || undefined }
 })
 
 /** 중복 파일 — 디스크를 실제로 읽는 단계가 있어 스캔과 따로 돌린다. */

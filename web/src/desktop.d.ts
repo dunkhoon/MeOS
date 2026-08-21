@@ -275,6 +275,10 @@ interface DiskScanResult {
   oldDirs?: DiskFileRow[]
   candidates?: DiskCandidate[]
   unknowns?: DiskFileRow[]
+  /** 이력 파일 id·시각 (저장된 스캔을 다시 읽었거나, 방금 저장한 경우) */
+  id?: string
+  at?: string
+  saved?: DiskHistoryItem
 }
 
 interface DiskDupGroup {
@@ -296,6 +300,21 @@ interface DiskProgress {
   hashed?: number
   readBytes?: number
   elapsedMs?: number
+}
+
+/** 지난 스캔 한 건의 요약 (목록용). 본문은 historyRead 로 따로 읽는다. */
+interface DiskHistoryItem {
+  id: string
+  root: string
+  at: string
+  totalBytes: number
+  files: number
+  dirs: number
+  elapsedMs: number
+  projects: number
+  candidateCount: number
+  candidateBytes: number
+  safeBytes: number
 }
 
 interface DiskConfig {
@@ -422,6 +441,10 @@ interface DesktopBridge {
       results?: { path: string; ok: boolean; size?: number; error?: string }[]
     }>
     reveal: (path: string) => Promise<{ ok: boolean; error?: string }>
+    history: () => Promise<{ ok: boolean; dir: string; items: DiskHistoryItem[] }>
+    historyRead: (id: string) => Promise<{ ok: boolean; error?: string; scan?: DiskScanResult }>
+    historyRemove: (id: string) => Promise<{ ok: boolean }>
+    historyOpenDir: () => Promise<{ ok: boolean; error?: string }>
     /** 해제 함수를 돌려준다 */
     onProgress: (cb: (msg: DiskProgress) => void) => () => void
   }

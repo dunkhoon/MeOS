@@ -88,6 +88,11 @@ contextBridge.exposeInMainWorld('desktop', {
     judge: (payload) => ipcRenderer.invoke('disk:judge', payload),
     trash: (items) => ipcRenderer.invoke('disk:trash', { items }),
     reveal: (p) => ipcRenderer.invoke('disk:reveal', p),
+    // 스캔 이력 — 끝난 스캔은 파일로 남는다(화면을 옮겼다 와도, 앱을 껐다 켜도 남아 있다)
+    history: () => ipcRenderer.invoke('disk:history'),
+    historyRead: (id) => ipcRenderer.invoke('disk:historyRead', id),
+    historyRemove: (id) => ipcRenderer.invoke('disk:historyRemove', id),
+    historyOpenDir: () => ipcRenderer.invoke('disk:historyOpenDir'),
     // 진행 상황 구독. 해제 함수를 돌려준다.
     onProgress: (cb) => {
       const h = (_e, msg) => cb(msg)

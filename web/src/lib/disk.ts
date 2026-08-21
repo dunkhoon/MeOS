@@ -13,6 +13,18 @@ export function fmtBytes(n: number): string {
   return `${b}B`
 }
 
+/** 이력 목록의 시각 — 오늘이면 시:분만, 아니면 날짜까지. 목록을 훑을 때 날짜가 눈에 걸리게. */
+export function fmtWhen(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  const today = new Date()
+  const sameDay =
+    d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate()
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`
+  return sameDay ? `오늘 ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`
+}
+
 export function riskLabel(risk: string): string {
   return risk === 'safe' ? '안전' : risk === 'caution' ? '주의' : '보존'
 }
