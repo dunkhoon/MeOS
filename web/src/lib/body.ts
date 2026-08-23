@@ -144,6 +144,13 @@ export async function dropGoal(id: string): Promise<void> {
   if (error) throw error
 }
 
+// ⚠️ 아래 두 함수가 읽고 쓰는 `nutrition_logs`(0011) 는 **더 이상 쓰이지 않는다.**
+//    0014 부터 섭취는 `foods`/`food_entries` 에서 나오고(`lib/food.ts`), 화면·코칭·
+//    에이전트가 모두 그쪽을 본다. 이 테이블을 새로 참조하지 말 것 — 늘 비어 있다.
+//    (실제로 Edge Function `chat` 이 여기를 계속 읽고 있어서, 에이전트가 "섭취 기록이
+//     안 잡힌다" 고 답했다. 2026-08-23 에 고쳤다.)
+//    과거 수동 입력분이 남아 있을 수 있어 테이블 자체는 지우지 않는다.
+
 export async function fetchNutrition(sinceISODate: string): Promise<NutritionLog[]> {
   const { data, error } = await supabase
     .from('nutrition_logs')

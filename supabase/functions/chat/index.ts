@@ -231,18 +231,13 @@ async function readData(admin: SupabaseClient, userId: string, kind: string) {
         .select('metric, target_value, target_date, start_value, start_date')
         .eq('user_id', userId)
         .eq('active', true),
-      admin
-        .from('nutrition_logs')
-        .select('day, kcal, protein_g')
-        .eq('user_id', userId)
-        .gte('day', sinceDay)
-        .order('day', { ascending: false }),
+      nutritionSummary(admin, userId, sinceDay, { detailDays: 7 }),
     ])
-    return { measurements: m.data ?? [], goals: g.data ?? [], nutrition: n.data ?? [] }
+    return { measurements: m.data ?? [], goals: g.data ?? [], nutrition: n }
   }
 
   // overview — 한 번에 큰 그림. 도구를 여러 번 부르지 않아도 대부분의 질문에 답이 된다.
-  const [acts, wellness, sessions, meas, goals] = await Promise.all([
+  const [acts, wellness, sessions, meas, goals, nutrition] = await Promise.all([
     admin
       .from('activities')
       .select('type, start_date_local, distance_m, moving_time_s, calories, training_load')
@@ -271,6 +266,9 @@ async function readData(admin: SupabaseClient, userId: string, kind: string) {
       .select('metric, target_value, target_date, start_value, start_date')
       .eq('user_id', userId)
       .eq('active', true),
+    // 큰 그림에는 상세 항목까지 넣지 않는다 — 하루 합계 3일치면 패턴은 보이고, 자세한 건
+    // meos_body 가 준다. overview 는 "도구 한 번으로 대부분 답이 되는" 크기를 지켜야 한다.
+    nutritionSummary(admin, userId, sinceDay, { detailDays: 3 }),
   ])
 
   const a = acts.data ?? []
@@ -299,7 +297,115 @@ async function readData(admin: SupabaseClient, userId: string, kind: string) {
     wellness: wellness.data ?? [],
     measurements: meas.data ?? [],
     goals: goals.data ?? [],
+    nutrition,
   }
+}
+
+/**
+ * 최근 섭취 — 하루 합계 + 최근 며칠의 실제 음식 + 자주 먹는 것.
+ *
+ * ⚠️ 출처는 `food_entries`(0014)다. 예전 `nutrition_logs`(0011, 하루 한 줄)를 읽고 있었는데
+ *    앱은 0014 이후 그 테이블에 **아무것도 쓰지 않는다.** 그래서 에이전트는 늘 빈 배열을 받았고
+ *    "섭취 기록이 안 잡힌다" 고 답했다. 앱 화면과 에이전트가 다른 숫자를 보면 안 된다 —
+ *    화면의 합계도 같은 테이블에서 나온다.
+ *
+ * 크기를 스스로 제한한다. 28일 × 끼니별 항목을 통째로 넘기면 프롬프트를 다 먹는다.
+ *   - `daily`   : 28일 하루 합계 (패턴은 여기서 보인다)
+ *   - `recent`  : 최근 며칠의 **실제 음식 항목** (무엇이 문제였는지는 이게 있어야 짚는다)
+ *   - `topFoods`: 28일 동안 자주 먹은 것 상위 15
+ */
+async function nutritionSummary(
+  admin: SupabaseClient,
+  userId: string,
+  sinceDay: string,
+  opts: { detailDays: number },
+) {
+  const { data, error } = await admin
+    .from('food_entries')
+    .select('day, meal, name, brand, amount, unit, kcal, carb_g, protein_g, fat_g, sugar_g, sodium_mg')
+    .eq('user_id', userId)
+    .gte('day', sinceDay)
+    .order('day', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  type Row = {
+    day: string
+    meal: string
+    name: string
+    brand: string | null
+    amount: number | null
+    unit: string | null
+    kcal: number | null
+    carb_g: number | null
+    protein_g: number | null
+    fat_g: number | null
+    sugar_g: number | null
+    sodium_mg: number | null
+  }
+  const rows = (data ?? []) as Row[]
+  if (rows.length === 0) {
+    return { windowDays: 28, daysLogged: 0, avg: null, daily: [], recent: [], topFoods: [] }
+  }
+
+  const NUM = ['kcal', 'carb_g', 'protein_g', 'fat_g', 'sugar_g', 'sodium_mg'] as const
+  type Num = (typeof NUM)[number]
+
+  // ── 하루 합계 ──
+  const byDay = new Map<string, { day: string; meals: Record<string, number> } & Record<Num, number>>()
+  for (const r of rows) {
+    let d = byDay.get(r.day)
+    if (!d) {
+      d = { day: r.day, meals: {}, kcal: 0, carb_g: 0, protein_g: 0, fat_g: 0, sugar_g: 0, sodium_mg: 0 }
+      byDay.set(r.day, d)
+    }
+    for (const k of NUM) d[k] = round(d[k] + (r[k] ?? 0), 1)
+    d.meals[r.meal] = round((d.meals[r.meal] ?? 0) + (r.kcal ?? 0), 0)
+  }
+  const daily = [...byDay.values()].sort((x, y) => (x.day < y.day ? 1 : -1))
+
+  // 평균은 **기록한 날** 기준이다. 안 적은 날까지 나누면 실제보다 적게 먹은 것처럼 보인다.
+  const avg = Object.fromEntries(
+    NUM.map((k) => [k, round(daily.reduce((t, d) => t + d[k], 0) / daily.length, 1)]),
+  ) as Record<Num, number>
+
+  // ── 최근 며칠의 실제 항목 ──
+  const detailFrom = daily.slice(0, Math.max(1, opts.detailDays)).map((d) => d.day)
+  // 하루에 스무 개씩 적는 날이 있으면 상세만으로 프롬프트가 넘친다. 최신부터 자른다.
+  const RECENT_MAX = 80
+  const recent = rows
+    .filter((r) => detailFrom.includes(r.day))
+    .slice(0, RECENT_MAX)
+    .map((r) => ({
+      day: r.day,
+      meal: r.meal,
+      name: r.brand ? `${r.brand} ${r.name}` : r.name,
+      amount: r.amount != null && r.unit ? `${r.amount}${r.unit}` : null,
+      kcal: r.kcal,
+      carb_g: r.carb_g,
+      protein_g: r.protein_g,
+      fat_g: r.fat_g,
+      sugar_g: r.sugar_g,
+      sodium_mg: r.sodium_mg,
+    }))
+
+  // ── 자주 먹는 것 ──
+  const tally = new Map<string, { name: string; count: number; kcalSum: number; kcalKnown: number }>()
+  for (const r of rows) {
+    const key = r.brand ? `${r.brand} ${r.name}` : r.name
+    const t = tally.get(key) ?? { name: key, count: 0, kcalSum: 0, kcalKnown: 0 }
+    t.count += 1
+    if (r.kcal != null) {
+      t.kcalSum += r.kcal
+      t.kcalKnown += 1
+    }
+    tally.set(key, t)
+  }
+  const topFoods = [...tally.values()]
+    .sort((x, y) => y.count - x.count)
+    .slice(0, 15)
+    .map((t) => ({ name: t.name, count: t.count, avgKcal: t.kcalKnown ? round(t.kcalSum / t.kcalKnown, 0) : null }))
+
+  return { windowDays: 28, daysLogged: daily.length, avg, daily, recent, topFoods }
 }
 
 function countBy(xs: string[]): Record<string, number> {
