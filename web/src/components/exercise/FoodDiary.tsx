@@ -25,6 +25,7 @@ import {
   type Meal,
 } from '../../lib/food'
 import type { CoachPlan } from '../../lib/coach'
+import { FoodAdvice } from './FoodAdvice'
 // 섭취 기록 — 날짜를 고르고, 끼니별로 음식을 담고, 합계를 본다.
 // 구조는 FatSecret 과 같다: 음식 목록에서 고르고 → 수량·단위·끼니를 정해 담는다.
 export function FoodDiary({ plan, onChanged }: { plan: CoachPlan; onChanged: () => void }) {
@@ -197,6 +198,8 @@ export function FoodDiary({ plan, onChanged }: { plan: CoachPlan; onChanged: () 
           <span className="muted small">등록해 두면 다음부터 골라서 담습니다</span>
         </div>
       </CollapsibleCard>
+      {/* 조언은 그날 기록 바로 아래에 붙는다 — 무엇을 보고 한 말인지가 위에 있어야 읽힌다 */}
+      <FoodAdvice day={day} plan={plan} totals={totals} />
       <FoodCalendar entries={entries} day={day} onPick={setDay} />
       <FoodList foods={foods} onEdit={setEditing} onChanged={() => void load()} />
       {picking && (
