@@ -14,9 +14,12 @@ import Disk from './pages/Disk'
 import Trash from './pages/Trash'
 import Settings from './pages/Settings'
 import Assistant from './pages/Assistant'
+import { isDesktop } from './lib/desktop'
 
 export default function App() {
   const { session, loading } = useAuth()
+  // PC 전용 화면은 경로 자체를 만들지 않는다 — 주소를 직접 쳐도 대시보드로 떨어진다
+  const desktop = isDesktop()
 
   return (
     <div className="app-root">
@@ -40,8 +43,8 @@ export default function App() {
               <Route path="/activity/:id" element={<ActivityDetail />} />
               <Route path="/assistant" element={<Assistant />} />
               <Route path="/report" element={<Report />} />
-              <Route path="/perforce" element={<Perforce />} />
-              <Route path="/disk" element={<Disk />} />
+              {desktop && <Route path="/perforce" element={<Perforce />} />}
+              {desktop && <Route path="/disk" element={<Disk />} />}
               <Route path="/trash" element={<Trash />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />

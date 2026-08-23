@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CollapsibleCard } from '../components/CollapsibleCard'
 import { ReviewHistoryModal, ReviewRunModal } from '../components/p4/Review'
 import { applyClick, planMove, toggleAll } from '../lib/p4move'
+import { isDesktop } from '../lib/desktop'
 
 // Perforce — PC 전용. p4 CLI 는 Electron main 에서 실행한다.
 // 서밋 로그는 사내 로컬 LLM(llm.aquatree.games)으로 작성하므로 diff 가 회사 밖으로 나가지 않는다.
@@ -29,7 +30,7 @@ function actionClass(action: string): string {
 }
 
 export default function Perforce() {
-  const isDesktop = !!window.desktop?.isDesktop
+  const desktop = isDesktop()
 
   const [cfg, setCfg] = useState<P4Config | null>(null)
   const [changes, setChanges] = useState<P4Change[]>([])
@@ -85,11 +86,11 @@ export default function Perforce() {
   }, [])
 
   useEffect(() => {
-    if (isDesktop) {
+    if (desktop) {
       void load()
       void loadCounts()
     }
-  }, [isDesktop, load, loadCounts])
+  }, [desktop, load, loadCounts])
 
   const flash = (msg: string) => {
     setNotice(msg)
@@ -180,21 +181,8 @@ export default function Perforce() {
   // 새 체인지리스트를 만든 뒤 선택한 파일을 바로 그리로 옮길지
   const [newThenMove, setNewThenMove] = useState<string[] | null>(null)
 
-  if (!isDesktop) {
-    return (
-      <div className="page">
-        <header className="page-head">
-          <h2>
-            Perforce <span className="tag">PC 전용</span>
-          </h2>
-          <p className="muted">Pending 체인지리스트 · 파일 이동 · 서밋 로그 작성</p>
-        </header>
-        <div className="card">
-          Perforce 는 사내망과 로컬 워크스페이스가 필요해 데스크톱 앱에서만 사용할 수 있어요.
-        </div>
-      </div>
-    )
-  }
+  // 브라우저·모바일에는 이 화면으로 오는 길이 없다 (App.tsx 가 경로를 안 만들고 사이드바에도 없다).
+  // 예전엔 여기서 "PC 전용" 안내를 띄웠는데, 이제 도달할 수 없어 걷어냈다.
 
   const totalFiles = changes.reduce((n, c) => n + c.files.length, 0)
 

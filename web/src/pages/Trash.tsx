@@ -9,6 +9,7 @@ import {
   restoreWorkItem,
 } from '../lib/work'
 import { loadShortcutTrash, purgeShortcut, restoreShortcut } from '../lib/shortcuts'
+import { isDesktop } from '../lib/desktop'
 
 // 삭제한 항목 모아보기 — 할 일 · 진행 중인 업무 · 루틴(클라우드) + 바로가기 · 스니펫(PC 로컬).
 // 어느 쪽이든 복원하거나 완전히 지울 수 있다.
@@ -30,7 +31,7 @@ function errMsg(e: unknown): string {
 }
 
 export default function Trash() {
-  const isDesktop = !!window.desktop?.isDesktop
+  const desktop = isDesktop()
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -71,7 +72,7 @@ export default function Trash() {
     }
 
     // PC 로컬 항목 (모바일/브라우저에는 존재하지 않음)
-    if (isDesktop) {
+    if (desktop) {
       for (const s of loadShortcutTrash()) {
         out.push({
           key: `shortcut:${s.id}`,
@@ -107,7 +108,7 @@ export default function Trash() {
     out.sort((a, b) => String(b.deletedAt ?? '').localeCompare(String(a.deletedAt ?? '')))
     setEntries(out)
     setLoading(false)
-  }, [isDesktop])
+  }, [desktop])
 
   useEffect(() => {
     void load()
@@ -191,11 +192,6 @@ export default function Trash() {
         )}
       </div>
 
-      {!isDesktop && (
-        <p className="muted small" style={{ marginTop: 12 }}>
-          바로가기 · 스니펫은 PC에 저장되므로 데스크톱 앱의 휴지통에서만 보입니다.
-        </p>
-      )}
     </div>
   )
 }

@@ -20,7 +20,6 @@ function newRunId(): string {
 }
 
 export default function Disk() {
-  const isDesktop = !!window.desktop?.isDesktop
 
   const [cfg, setCfg] = useState<DiskConfig | null>(null)
   const [root, setRoot] = useState('')
@@ -244,18 +243,8 @@ export default function Disk() {
     }
   }
 
-  if (!isDesktop) {
-    return (
-      <div className="page">
-        <header className="page-head">
-          <h2>디스크 정리</h2>
-        </header>
-        <div className="card notice-card">
-          이 화면은 <b>PC 앱에서만</b> 동작합니다. 내 컴퓨터의 폴더를 직접 읽고 지우는 기능이라 브라우저에서는 쓸 수 없습니다.
-        </div>
-      </div>
-    )
-  }
+  // 브라우저·모바일에는 이 화면으로 오는 길이 없다 (App.tsx 가 경로를 안 만든다).
+  // 아래 "구 버전 exe" 가드는 다르다 — 그건 데스크톱에서 실제로 나는 상황이라 남긴다.
 
   // 데스크톱 셸은 배포된 웹을 띄운다 — 화면(웹)만 새로 배포되고 앱(exe)이 예전 것이면
   // preload 에 disk 브리지가 없다. 그때 그냥 터지지 않게 무엇을 해야 하는지 알려 준다.

@@ -1,3 +1,4 @@
+import { isDesktop } from '../lib/desktop'
 export default function Dashboard() {
   return (
     <div className="page">
@@ -9,9 +10,11 @@ export default function Dashboard() {
         <div className="card placeholder">
           오늘/이번주 일정 <span className="soon">준비중</span>
         </div>
-        <div className="card placeholder">
-          마감·진행 업무 <span className="soon">PC 전용 · 준비중</span>
-        </div>
+        {isDesktop() && (
+          <div className="card placeholder">
+            마감·진행 업무 <span className="soon">PC 전용 · 준비중</span>
+          </div>
+        )}
         <div className="card placeholder">
           훈련부하 · 최근 활동 <span className="soon">준비중</span>
         </div>

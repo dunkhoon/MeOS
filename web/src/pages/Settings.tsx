@@ -2,14 +2,15 @@ import { useEffect, useState, type KeyboardEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
 import { THEMES, getTheme, setTheme, type ThemeId } from '../lib/theme'
+import { isDesktop } from '../lib/desktop'
 
 export default function Settings() {
-  const isDesktop = !!window.desktop?.isDesktop
+  const desktop = isDesktop()
   return (
     <div className="page">
       <header className="page-head">
         <h2>설정</h2>
-        <p className="muted">테마 · 계정 · Quick Search · 스니펫 · BTS 연결</p>
+        <p className="muted">{desktop ? '테마 · 계정 · Quick Search · 스니펫 · BTS 연결' : '테마 · 계정'}</p>
       </header>
 
       <ThemeSetting />
@@ -17,7 +18,8 @@ export default function Settings() {
       {/* 계정은 모바일에서도 보여야 한다 — 비밀번호를 여기서 정한다 */}
       <AccountSetting />
 
-      {isDesktop ? (
+      {/* PC 전용 설정은 브라우저에서 안내조차 띄우지 않는다 — 쓸 수 없는 걸 알려 봐야 자리만 찬다 */}
+      {desktop && (
         <>
           <AppUrlSetting />
           <P4Setting />
@@ -26,8 +28,6 @@ export default function Settings() {
           <HotkeySetting />
           <SnippetManager />
         </>
-      ) : (
-        <div className="card muted">Quick Search · 스니펫 · BTS · Perforce 설정은 데스크톱 앱에서만 사용할 수 있어요.</div>
       )}
     </div>
   )

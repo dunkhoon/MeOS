@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { loadShortcuts, saveShortcuts, trashShortcut, type Shortcut } from '../lib/shortcuts'
+import { isDesktop } from '../lib/desktop'
 
 // PC 전용 바로가기 독(dock) — 최좌측 세로 바 (Electron에서만 표시). 저장은 로컬(localStorage).
 // 삭제하면 사라지지 않고 휴지통으로 옮겨진다 (휴지통 화면에서 복원 가능).
@@ -26,7 +27,7 @@ export function Shortcuts() {
   const dragIdx = useRef<number | null>(null)
 
   // PC 전용 — 브라우저/모바일에서는 표시하지 않음
-  if (!window.desktop?.isDesktop) return null
+  if (!isDesktop()) return null
 
   const update = (next: Shortcut[]) => {
     setList(next)

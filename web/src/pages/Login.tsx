@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
+import { isDesktop } from '../lib/desktop'
 
 // 로그인은 이메일 + 비밀번호가 기본이다.
 // (매직링크는 Supabase 기본 메일 발송 한도가 시간당 몇 통뿐이라 실사용에 부적합했다)
@@ -37,7 +38,7 @@ export default function Login() {
     }
 
     // 복구용 — 매직링크
-    const emailRedirectTo = window.desktop?.isDesktop ? 'privateplanner://auth' : window.location.origin
+    const emailRedirectTo = isDesktop() ? 'privateplanner://auth' : window.location.origin
     const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo } })
     if (error) {
       setStatus('error')

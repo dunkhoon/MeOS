@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { runIntervalsSync } from '../lib/sync'
 import { NAV, rankMatch } from '../lib/nav'
+import { isDesktop } from '../lib/desktop'
 
 // Quick Search 오버레이 — 전역 단축키/트레이로 열림. 페이지·명령·바로가기·스니펫 검색.
 interface Item {
@@ -40,7 +41,7 @@ export function QuickSearch() {
 
   const items = useMemo<Item[]>(() => {
     // 사이드바와 같은 목록에서 만든다 — 화면을 추가하면 검색에도 자동으로 나온다
-    const pages: Item[] = NAV.filter((n) => !n.desktopOnly || !!window.desktop?.isDesktop).map((n) => ({
+    const pages: Item[] = NAV.filter((n) => !n.desktopOnly || isDesktop()).map((n) => ({
       id: 'p-' + n.to,
       label: n.label,
       icon: n.icon,

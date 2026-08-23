@@ -23,6 +23,7 @@ import {
 } from '../lib/work'
 import { issueNo, normalizeUrl, splitTitleAndUrl, workCopyText } from '../lib/workText'
 import { computeReorder } from '../lib/reorder'
+import { isDesktop } from '../lib/desktop'
 
 /** 상태 칩을 누르면 한 단계씩 진행 → 완료 다음엔 다시 대기로 돈다. */
 const NEXT_STATUS: Record<WorkStatus, WorkStatus> = { wait: 'doing', doing: 'done', done: 'wait' }
@@ -37,7 +38,7 @@ function errMsg(e: unknown): string {
 }
 
 function openLink(url: string) {
-  if (window.desktop?.isDesktop) void window.desktop.openShortcut(url)
+  if (isDesktop()) void window.desktop?.openShortcut(url)
   else window.open(url, '_blank', 'noopener')
 }
 
@@ -46,7 +47,7 @@ function sysLabel(s: 'redmine' | 'jira' | null): string {
 }
 
 export default function Tasks() {
-  const isDesktop = !!window.desktop?.isDesktop
+  const desktop = isDesktop()
 
   const [items, setItems] = useState<WorkItem[]>([])
   const [routines, setRoutines] = useState<Routine[]>([])
@@ -428,13 +429,10 @@ export default function Tasks() {
         />
       </CollapsibleCard>
 
-      {/* ── BTS (Redmine / JIRA) ───────────────────── */}
-      <BtsSection
-        isDesktop={isDesktop}
-        trackedByKey={trackedByKey}
-        onDragStart={startDrag}
-        onDragEnd={endDrag}
-      />
+      {/* ── BTS (Redmine / JIRA) — 사내망이 필요해 PC 전용. 브라우저에선 카드째 없다 ── */}
+      {desktop && (
+        <BtsSection trackedByKey={trackedByKey} onDragStart={startDrag} onDragEnd={endDrag} />
+      )}
 
       {/* ── 할 일 + 루틴 ───────────────────────────── */}
       <div className="work-bottom">
@@ -988,13 +986,12 @@ function AddForm({
 }
 
 // ── BTS 섹션 ────────────────────────────────────────────────
+// ⚠️ 데스크톱에서만 렌더된다 (호출부가 막는다). 그래서 여기엔 "PC 전용" 안내가 없다.
 function BtsSection({
-  isDesktop,
   trackedByKey,
   onDragStart,
   onDragEnd,
 }: {
-  isDesktop: boolean
   trackedByKey: Map<string, WorkItem>
   onDragStart: (e: React.DragEvent, d: DragData) => void
   onDragEnd: () => void
@@ -1020,8 +1017,8 @@ function BtsSection({
   }, [])
 
   useEffect(() => {
-    if (isDesktop) void load()
-  }, [isDesktop, load])
+    void load()
+  }, [load])
 
   const issues = result?.issues ?? []
 
@@ -1070,28 +1067,18 @@ function BtsSection({
         </>
       }
       actions={
-        isDesktop ? (
-          <>
-            <span className="muted small">{issues.length}</span>
-            <button type="button" className="link-btn" onClick={() => void load()} disabled={loading}>
-              {loading ? '불러오는 중…' : '새로고침'}
-            </button>
-            <button type="button" className="link-btn" onClick={() => void window.desktop?.bts.openNew('redmine')}>
-              + 등록
-            </button>
-          </>
-        ) : (
-          <span className="tag">PC 전용</span>
-        )
+        <>
+          <span className="muted small">{issues.length}</span>
+          <button type="button" className="link-btn" onClick={() => void load()} disabled={loading}>
+            {loading ? '불러오는 중…' : '새로고침'}
+          </button>
+          <button type="button" className="link-btn" onClick={() => void window.desktop?.bts.openNew('redmine')}>
+            + 등록
+          </button>
+        </>
       }
     >
-      {!isDesktop ? (
-        <p className="muted small">
-          BTS 목록은 사내망에 연결된 PC(데스크톱 앱)에서만 실시간으로 조회합니다. 진행 중인 업무 · 할 일 · 루틴은 이
-          화면에서 그대로 사용할 수 있어요.
-        </p>
-      ) : (
-        <>
+      <>
           <div className="bts-src">
             {src?.redmine.configured && (
               <span className={`chip sys-redmine ${src.redmine.error ? 'bad' : ''}`}>
@@ -1193,8 +1180,7 @@ function BtsSection({
               )
             })}
           </div>
-        </>
-      )}
+      </>
     </CollapsibleCard>
   )
 }
