@@ -5953,6 +5953,35 @@ button.st-row:hover .st-row-edit {
   flex: 1 1 100%;
   margin: 2px 0 0;
 }
+/* AI 에게 보낸 사진 — 붙여넣기는 눈에 안 보이니 무엇이 갔는지 남겨 둔다.
+   기본은 썸네일, 누르면 카드 폭까지 키운다(채워진 숫자를 표와 대조할 때 필요하다). */
+.fd-shot {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  overflow: hidden;
+  line-height: 0;
+  cursor: zoom-in;
+}
+.fd-shot img {
+  display: block;
+  height: 38px;
+  width: auto;
+  max-width: 120px;
+  object-fit: cover;
+}
+.fd-shot.big {
+  flex: 1 1 100%;
+  cursor: zoom-out;
+}
+.fd-shot.big img {
+  height: auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+}
 .fd-row {
   display: flex;
   gap: 10px;

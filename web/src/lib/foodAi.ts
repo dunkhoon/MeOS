@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { askQuestion, fetchMessages, type ChatMessage } from './assistant'
+import { imageExt, isImageType } from './clipboardImage'
 import { NUTRIENTS, type FoodInput } from './food'
 
 // 영양정보표 사진이나 글 설명 → 음식 정보.
@@ -14,15 +15,26 @@ import { NUTRIENTS, type FoodInput } from './food'
 const BUCKET = 'food-photos'
 const SIGNED_URL_TTL = 60 * 30 // 30분이면 에이전트가 읽고도 남는다
 
-export async function uploadLabelPhoto(file: File): Promise<{ path: string; signedUrl: string }> {
+/**
+ * 사진을 비공개 버킷에 올리고 서명 URL 을 돌려준다.
+ *
+ * File 이 아니라 **Blob** 을 받는다 — 클립보드에서 온 이미지는 파일명이 없다.
+ * 그래서 확장자·contentType 은 이름이 아니라 **MIME** 에서 뽑는다.
+ */
+export async function uploadLabelPhoto(file: Blob): Promise<{ path: string; signedUrl: string }> {
   const { data: s } = await supabase.auth.getSession()
   const uid = s.session?.user.id
   if (!uid) throw new Error('로그인이 필요합니다')
 
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const type = (file.type || '').toLowerCase()
+  // MIME 을 먼저 믿는다. 파일명은 확장자가 **실제로 있을 때만** 본다 —
+  // `split('.').pop()` 은 점이 없는 이름("photo")을 그대로 확장자로 내놓는다.
+  const named = file instanceof File ? file.name : ''
+  const fromName = named.includes('.') ? (named.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+  const ext = isImageType(type) ? imageExt(type) : fromName || 'png'
   // 경로 첫 칸이 user_id 여야 정책을 통과한다 (0014 참고)
-  const path = `${uid}/${Date.now()}.${ext || 'jpg'}`
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || 'image/jpeg' })
+  const path = `${uid}/${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: type || 'image/png' })
   if (error) throw error
 
   const { data, error: e2 } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL)

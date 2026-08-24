@@ -12,6 +12,7 @@ import {
   type Nutrient,
 } from '../../lib/food'
 import { askFoodParse, parseFoodReply, photoPrompt, pollReply, textPrompt, uploadLabelPhoto } from '../../lib/foodAi'
+import { imageFromPaste, readClipboardImage } from '../../lib/clipboardImage'
 
 // 음식 등록·편집. AI 가 읽은 결과도 **여기에 채워 놓고** 사람이 확인한 뒤 저장한다.
 // 잘못 읽은 숫자가 그대로 합계에 들어가지 않게 하려는 것이다.
@@ -70,6 +71,10 @@ export function FoodEditor({
   const [aiText, setAiText] = useState('')
   const [aiState, setAiState] = useState<'idle' | 'uploading' | 'waiting'>('idle')
   const [aiNote, setAiNote] = useState<string | null>(null)
+  /** 방금 보낸 사진 미리보기(objectURL). 붙여넣기는 눈에 안 보이니 **무엇이 갔는지** 보여 줘야 한다. */
+  const [shot, setShot] = useState<string | null>(null)
+  const [shotBig, setShotBig] = useState(false)
+  const shotUrl = useRef<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pending = useRef<{ threadId: string; messageId: string } | null>(null)
 
@@ -111,8 +116,14 @@ export function FoodEditor({
     return () => window.clearInterval(id)
   }, [aiState])
 
-  async function runPhoto(file: File) {
+  async function runPhoto(file: Blob) {
     setError(null)
+    setAiNote(null)
+    // 보낸 것을 화면에 남긴다 — AI 가 채운 숫자를 표와 대조할 때도 이게 있어야 한다
+    if (shotUrl.current) URL.revokeObjectURL(shotUrl.current)
+    shotUrl.current = URL.createObjectURL(file)
+    setShot(shotUrl.current)
+    setShotBig(false)
     setAiState('uploading')
     try {
       const { signedUrl } = await uploadLabelPhoto(file)
@@ -124,6 +135,43 @@ export function FoodEditor({
       setError(errMsg(e))
     }
   }
+
+  /**
+   * Ctrl+V. AI 칸이 펼쳐져 있을 때만 듣는다 —
+   * 항상 듣고 있으면 다른 목적으로 복사한 이미지를 이름 칸에서 붙여넣었을 때
+   * 30초짜리 분석이 멋대로 시작된다.
+   *
+   * ⚠️ 이미지가 없으면 이벤트를 그대로 흘려보낸다(설명 칸에 글자를 붙여넣어야 한다).
+   */
+  useEffect(() => {
+    if (!aiOpen || aiState !== 'idle') return
+    const onPaste = (e: ClipboardEvent) => {
+      const img = imageFromPaste(e)
+      if (!img) return
+      e.preventDefault()
+      void runPhoto(img)
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiOpen, aiState])
+
+  /** 버튼으로 클립보드 읽기 — 권한이 막히는 환경이 있어 실패하면 Ctrl+V 로 안내한다. */
+  async function runClipboard() {
+    setError(null)
+    const { file, error: why } = await readClipboardImage()
+    if (!file) {
+      setAiNote(why ?? '클립보드에 이미지가 없습니다.')
+      return
+    }
+    await runPhoto(file)
+  }
+
+  // 미리보기 objectURL 은 창이 닫힐 때 돌려준다 (상태가 아니라 ref 로 붙잡는다 —
+  // 정리 함수 안에서는 setState 로 값을 꺼낼 수 없다)
+  useEffect(() => () => {
+    if (shotUrl.current) URL.revokeObjectURL(shotUrl.current)
+  }, [])
 
   async function runText() {
     if (!aiText.trim()) return
@@ -185,6 +233,17 @@ export function FoodEditor({
             </span>
           )}
           {aiNote && !waiting && <span className="muted small">{aiNote}</span>}
+          {/* 보낸 사진 — 눌러서 키운다. 채워진 숫자를 표와 대조할 때 필요하다 */}
+          {shot && (
+            <button
+              type="button"
+              className={`fd-shot ${shotBig ? 'big' : ''}`}
+              onClick={() => setShotBig((v) => !v)}
+              title={shotBig ? '접기' : '크게 보기'}
+            >
+              <img src={shot} alt="AI 에게 보낸 영양정보표" />
+            </button>
+          )}
         </div>
       )}
 
@@ -202,7 +261,10 @@ export function FoodEditor({
             }}
           />
           <button className="ghost-btn" onClick={() => fileRef.current?.click()}>
-            📷 영양정보표 사진
+            📷 사진 고르기
+          </button>
+          <button className="ghost-btn" onClick={() => void runClipboard()} title="캡처한 이미지를 클립보드에서 바로 읽습니다">
+            📋 클립보드에서
           </button>
           <span className="muted small">또는</span>
           <input
@@ -216,6 +278,8 @@ export function FoodEditor({
             추정
           </button>
           <p className="muted small fd-ai-hint">
+            여기서 <b>Ctrl+V</b> 로 캡처를 바로 붙여넣을 수 있습니다(Win+Shift+S 로 잘라내 오면 됩니다).
+            <br />
             사진은 <b>음식 사진이 아니라 영양정보표</b>를 찍은 것이어야 합니다. 집 PC 의 OpenClaw 가 읽습니다.
           </p>
         </div>
