@@ -26,6 +26,9 @@ export default function Disk() {
   const [maxDepth, setMaxDepth] = useState(3)
   const [skipSystem, setSkipSystem] = useState(true)
 
+  /** 지금 프로세스의 관리자 권한. 스캔이 얼마나 훑을 수 있는지, 삭제가 될지가 여기 달렸다. */
+  const [elev, setElev] = useState<Elevation | null>(null)
+
   const [scan, setScan] = useState<DiskScanResult | null>(null)
   const [busy, setBusy] = useState<null | 'scan' | 'dup' | 'judge' | 'trash'>(null)
   const [progress, setProgress] = useState<DiskProgress | null>(null)
@@ -35,6 +38,8 @@ export default function Disk() {
   /** 정리 후보 + (AI 가 판정한 뒤엔) 정체불명 폴더까지 한 목록으로 */
   const [items, setItems] = useState<DiskCandidate[]>([])
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  /** 지우지 못한 항목. 왜 실패했는지와 다음에 뭘 누르면 되는지가 여기 붙어 온다. */
+  const [failed, setFailed] = useState<DiskTrashResult[]>([])
   const [judged, setJudged] = useState<{ model: string; count: number } | null>(null)
 
   const [dups, setDups] = useState<{ groups: DiskDupGroup[]; wastedTotal: number; groupCount: number } | null>(null)
@@ -60,6 +65,9 @@ export default function Disk() {
       const h = await window.desktop!.disk.history()
       setHistory(h.items ?? [])
       if (h.items?.length) void openHistory(h.items[0].id, { silent: true })
+
+      // 구 버전 exe 에는 이 브리지가 없다 — 없으면 권한 안내만 빠지고 나머지는 그대로 돈다
+      if (window.desktop?.app.elevation) setElev(await window.desktop.app.elevation())
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -210,37 +218,90 @@ export default function Disk() {
   const pickedItems = items.filter((i) => picked.has(i.path))
   const pickedBytes = pickedItems.reduce((s, i) => s + i.size, 0)
 
-  const runTrash = async () => {
-    if (!pickedItems.length || busy) return
+  /**
+   * 지운다. 기본은 휴지통이고, 'permanent' 는 **휴지통이 거절한 항목**을 사용자가 실패 목록에서
+   * 다시 누를 때만 온다(아래 실패 패널). 성공한 것만 목록·선택에서 뺀다 —
+   * 실패한 것은 그대로 남겨야 관리자 권한으로 다시 열었을 때 바로 다시 누를 수 있다.
+   */
+  const doDelete = async (targets: { path: string; size: number }[], mode: 'trash' | 'permanent') => {
+    if (!targets.length || busy) return
+    const bytes = targets.reduce((s, i) => s + i.size, 0)
+    const list =
+      targets.slice(0, 8).map((i) => `· ${i.path}`).join('\n') +
+      (targets.length > 8 ? `\n… 외 ${targets.length - 8}개` : '')
     const msg =
-      `${pickedItems.length}개 항목(${fmtBytes(pickedBytes)})을 휴지통으로 보냅니다.\n\n` +
-      pickedItems.slice(0, 8).map((i) => `· ${i.path}`).join('\n') +
-      (pickedItems.length > 8 ? `\n… 외 ${pickedItems.length - 8}개` : '') +
-      '\n\n휴지통이라 되돌릴 수 있습니다. 진행할까요?'
+      mode === 'permanent'
+        ? `${targets.length}개 항목(${fmtBytes(bytes)})을 영구 삭제합니다.\n\n` +
+          '⚠️ 휴지통을 거치지 않습니다 — 되돌릴 수 없습니다.\n\n' +
+          list +
+          '\n\n정말 진행할까요?'
+        : `${targets.length}개 항목(${fmtBytes(bytes)})을 휴지통으로 보냅니다.\n\n` +
+          list +
+          '\n\n휴지통이라 되돌릴 수 있습니다. 진행할까요?'
     if (!window.confirm(msg)) return
 
     setBusy('trash')
     setErr(null)
+    setFailed([])
     try {
-      const r = await window.desktop!.disk.trash(pickedItems.map((i) => ({ path: i.path, size: i.size })))
-      const failed = (r.results ?? []).filter((x) => !x.ok)
-      const okCount = (r.results ?? []).filter((x) => x.ok).length
+      const r = await window.desktop!.disk.trash(targets, mode)
+      const results = r.results ?? []
+      const done = results.filter((x) => x.ok)
+      const bad = results.filter((x) => !x.ok)
       setNotice(
-        `${okCount}개를 휴지통으로 보냈습니다 (${fmtBytes(r.freed ?? 0)} 확보)` +
-          (failed.length ? ` · 실패 ${failed.length}개` : ''),
+        `${done.length}개를 ${mode === 'permanent' ? '영구 삭제했습니다' : '휴지통으로 보냈습니다'}` +
+          ` (${fmtBytes(r.freed ?? 0)} 확보)` +
+          (bad.length ? ` · 실패 ${bad.length}개` : ''),
       )
-      if (failed.length) {
-        // 쓰는 중인 파일은 흔히 실패한다 — 무엇이 왜 실패했는지 그대로 보여 준다
-        setErr(failed.slice(0, 5).map((f) => `${f.path} — ${f.error}`).join('\n'))
-      }
-      const gone = new Set((r.results ?? []).filter((x) => x.ok).map((x) => x.path))
+      setFailed(bad)
+      const gone = new Set(done.map((x) => x.path))
       setItems((prev) => prev.filter((i) => !gone.has(i.path)))
-      setPicked(new Set())
+      setPicked((prev) => {
+        const next = new Set(prev)
+        for (const p of gone) next.delete(p)
+        return next
+      })
     } catch (e) {
       setErr(errMsg(e))
     } finally {
       setBusy(null)
     }
+  }
+
+  const runTrash = () => doDelete(pickedItems.map((i) => ({ path: i.path, size: i.size })), 'trash')
+
+  /** 휴지통이 못 받은 것들. 크기는 스캔 값에서 다시 찾는다(실패 결과에는 안 들어 있다). */
+  const permanentRetry = failed
+    .filter((f) => f.permanentOnly)
+    .map((f) => ({ path: f.path, size: items.find((i) => i.path === f.path)?.size ?? 0 }))
+
+  const relaunchAsAdmin = async () => {
+    if (!window.desktop?.app.relaunchElevated) return
+    const ok = window.confirm(
+      '관리자 권한으로 앱을 다시 엽니다.\n\n' +
+        'UAC 창이 뜨면 "예" 를 눌러 주세요. 취소하면 지금 앱은 그대로 유지됩니다.\n' +
+        '(스캔 이력은 파일로 남아 있어 다시 켜도 그대로입니다)',
+    )
+    if (!ok) return
+    setErr(null)
+    const r = await window.desktop.app.relaunchElevated()
+    if (!r.ok) setErr(r.cancelled ? '관리자 권한 실행을 취소했습니다.' : (r.error ?? '다시 실행하지 못했습니다.'))
+  }
+
+  const toggleAlwaysAdmin = async (on: boolean) => {
+    if (!window.desktop?.app.setAlwaysAdmin) return
+    const r = await window.desktop.app.setAlwaysAdmin(on)
+    if (!r.ok) {
+      setErr(r.error ?? '설정을 저장하지 못했습니다.')
+      return
+    }
+    setElev((prev) => (prev ? { ...prev, alwaysAdmin: on } : prev))
+    setErr(null)
+    setNotice(
+      on
+        ? '다음부터 앱을 켤 때마다 관리자 권한을 요청합니다(UAC 창이 뜹니다). 지금 창은 아직 일반 권한입니다 — 다시 실행해야 적용됩니다.'
+        : '항상 관리자 권한으로 실행을 껐습니다.',
+    )
   }
 
   // 브라우저·모바일에는 이 화면으로 오는 길이 없다 (App.tsx 가 경로를 안 만든다).
@@ -273,8 +334,83 @@ export default function Disk() {
         <span className="work-sub muted">용량 현황 · 무엇이 차지하는지 · 지워도 되는 것</span>
       </header>
 
+      {/* ── 권한 ──
+          관리자가 아니면 두 군데서 조용히 막힌다: 스캔은 못 읽는 폴더를 건너뛰고(모자란 줄도 모른다),
+          삭제는 "Failed to perform delete operation" 만 남기고 실패한다. 그래서 맨 위에 둔다. */}
+      {elev?.platformOk && (
+        <div className={`dk-elev ${elev.elevated ? 'ok' : 'warn'}`}>
+          <span className="dk-elev-badge">{elev.elevated ? '관리자 권한' : '일반 권한'}</span>
+          <span className="muted small dk-elev-why">
+            {elev.elevated
+              ? '잠긴 폴더까지 훑고, 권한 때문에 삭제가 막히지 않습니다.'
+              : '권한 없는 폴더는 스캔에서 건너뛰고, 삭제도 실패할 수 있습니다.'}
+          </span>
+          {!elev.elevated && elev.canRelaunch && (
+            <button className="sync-btn" disabled={!!busy} onClick={() => void relaunchAsAdmin()}>
+              관리자 권한으로 다시 실행
+            </button>
+          )}
+          {elev.alwaysAdminAvailable ? (
+            <label
+              className="dk-opt"
+              title={
+                '켜면 이 PC 에서 MeOS 를 켤 때마다 UAC 창이 뜹니다.\n' +
+                '매직링크(privateplanner://) 로 앱이 열릴 때도 UAC 를 한 번 거칩니다.'
+              }
+            >
+              <input
+                type="checkbox"
+                checked={elev.alwaysAdmin}
+                onChange={(e) => void toggleAlwaysAdmin(e.target.checked)}
+              />
+              항상 관리자 권한으로 실행
+            </label>
+          ) : (
+            <span className="muted small">항상 관리자로는 설치본에서만 켤 수 있습니다(지금은 개발 모드).</span>
+          )}
+        </div>
+      )}
+
       {err && <div className="sync-msg err dk-err">{err}</div>}
       {notice && <div className="sync-msg ok">{notice}</div>}
+
+      {/* 지우지 못한 항목 — 무엇이 왜 실패했는지와, 다음에 누를 버튼을 같이 둔다 */}
+      {failed.length > 0 && (
+        <div className="card dk-fail">
+          <div className="dk-fail-head">
+            <b>지우지 못한 항목 {failed.length}개</b>
+            {failed.some((f) => f.needsAdmin) && !elev?.elevated && (
+              <button className="sync-btn" disabled={!!busy} onClick={() => void relaunchAsAdmin()}>
+                관리자 권한으로 다시 실행
+              </button>
+            )}
+            {permanentRetry.length > 0 && (
+              <button
+                className="ghost-btn danger"
+                disabled={!!busy}
+                onClick={() => void doDelete(permanentRetry, 'permanent')}
+                title="휴지통을 거치지 않습니다 — 되돌릴 수 없습니다."
+              >
+                영구 삭제로 다시 시도 ({permanentRetry.length}개)
+              </button>
+            )}
+            <button className="link-btn" onClick={() => setFailed([])}>
+              닫기
+            </button>
+          </div>
+          <ul className="dk-fail-list">
+            {failed.map((f) => (
+              <li key={f.path}>
+                <span className="dk-fail-path" title={f.path}>
+                  {f.path}
+                </span>
+                <span className="dk-fail-why">{f.error}</span>
+                {f.raw && <span className="muted small dk-fail-raw">{f.raw}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ── 드라이브 ── */}
       <div className="dk-drives">
@@ -372,6 +508,17 @@ export default function Disk() {
             {viewing && ` · ${fmtWhen(viewing.at)} 스캔`}
           </p>
         )}
+
+        {/* 건너뛴 폴더는 결과에서 안 보인다 — 모자란 스캔을 완전한 스캔으로 착각하지 않게 짚어 준다 */}
+        {!!scan?.stats?.denied && !elev?.elevated && elev?.canRelaunch && (
+          <p className="muted small dk-stat">
+            권한이 없어 {scan.stats!.denied.toLocaleString()}곳을 건너뛰었습니다 — 관리자 권한으로 다시 실행하면 전부
+            훑습니다.{' '}
+            <button className="link-btn" disabled={!!busy} onClick={() => void relaunchAsAdmin()}>
+              다시 실행
+            </button>
+          </p>
+        )}
       </div>
 
       {/* ── 지난 스캔 ── */}
@@ -439,7 +586,8 @@ export default function Disk() {
                   {busy === 'judge' ? 'AI 판단 중…' : 'AI 로 판단'}
                 </button>
                 <button className="sync-btn" disabled={!!busy || !pickedItems.length} onClick={() => void runTrash()}>
-                  휴지통으로
+                  {/* 224GB 트리는 몇 분이 걸린다 — 버튼이 그냥 회색이면 멈춘 줄 안다 */}
+                  {busy === 'trash' ? '지우는 중…' : '휴지통으로'}
                 </button>
               </>
             }

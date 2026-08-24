@@ -6140,6 +6140,89 @@ button.st-row:hover .st-row-edit {
 /* ══ 디스크 정리 (PC 전용) ═════════════════════════════════
    화면이 세로로 길다 — 드라이브 → 스캔 → 정리 후보 → 상세 뷰 순서가 곧 사용 순서다. */
 
+/* ── 권한 줄 ──
+   맨 위 한 줄. 일반 권한이면 노랗게 서서 "왜 결과가 모자란지" 를 먼저 말한다. */
+.dk-elev {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--h-green);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+.dk-elev.warn {
+  border-left-color: var(--h-yellow);
+}
+.dk-elev-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  white-space: nowrap;
+}
+.dk-elev.ok .dk-elev-badge {
+  color: var(--h-green);
+}
+.dk-elev.warn .dk-elev-badge {
+  color: var(--h-yellow);
+}
+.dk-elev-why {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* ── 지우지 못한 항목 ── */
+.dk-fail {
+  border-left: 3px solid var(--h-red);
+  margin-bottom: 12px;
+}
+.dk-fail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.dk-fail-head b {
+  flex: 1;
+  min-width: 160px;
+}
+.dk-fail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.dk-fail-list li {
+  display: grid;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: var(--bg-elev);
+}
+.dk-fail-path {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* 경로는 뒤쪽이 중요하다 */
+  text-align: left;
+}
+.dk-fail-why {
+  font-size: 12.5px;
+}
+.dk-fail-raw {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  opacity: 0.65;
+}
+
 .dk-drives {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

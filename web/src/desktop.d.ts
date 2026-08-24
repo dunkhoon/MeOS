@@ -317,6 +317,21 @@ interface DiskHistoryItem {
   safeBytes: number
 }
 
+interface DiskTrashResult {
+  path: string
+  ok: boolean
+  size?: number
+  /** 실패 이유 — main 이 되짚어 준 사람이 읽을 문장 */
+  error?: string
+  /** 관리자 권한으로 다시 실행하면 될 가능성이 있다 */
+  needsAdmin?: boolean
+  /** 휴지통으로는 못 간다(용량 초과·정책·경로 길이) — "영구 삭제로 다시 시도" 를 띄운다 */
+  permanentOnly?: boolean
+  /** Electron 이 준 원문. 진단이 틀렸을 때 근거를 남긴다. */
+  raw?: string
+  permanent?: boolean
+}
+
 interface DiskConfig {
   platformOk: boolean
   lastRoot: string
@@ -325,6 +340,20 @@ interface DiskConfig {
   model: string
   llmReady: boolean
   drives: DiskDrive[]
+}
+
+/** 지금 프로세스의 관리자 권한 상태. 디스크 정리가 이걸 보고 안내를 바꾼다. */
+interface Elevation {
+  platformOk: boolean
+  /** 관리자 권한으로 돌고 있는가 */
+  elevated: boolean
+  /** 승격해서 다시 열 수 있는가 (Windows) */
+  canRelaunch: boolean
+  /** "항상 관리자로" 를 걸 수 있는가 — 설치본에서만 (개발 모드는 electron.exe 라 제외) */
+  alwaysAdminAvailable: boolean
+  alwaysAdmin: boolean
+  exePath: string
+  error?: string
 }
 
 interface AppInfo {
@@ -346,6 +375,10 @@ interface DesktopBridge {
     setUrl: (url: string) => Promise<{ ok: boolean; url?: string; error?: string }>
     /** hard=true 면 서비스워커·캐시까지 비우고 다시 연다 */
     reload: (hard?: boolean) => Promise<{ ok: boolean }>
+    elevation: () => Promise<Elevation>
+    /** UAC 를 취소하면 { ok:false, cancelled:true } 만 오고 앱은 그대로 살아 있다. */
+    relaunchElevated: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>
+    setAlwaysAdmin: (on: boolean) => Promise<{ ok: boolean; on?: boolean; error?: string }>
   }
   onAuthCallback: (cb: (url: string) => void) => void
   openShortcut: (target: string) => Promise<{ ok: boolean; error?: string }>
@@ -433,12 +466,20 @@ interface DesktopBridge {
       engines: string[]
       drive: DiskDrive | null
     }) => Promise<{ ok: boolean; error?: string; items?: DiskCandidate[]; model?: string; promptChars?: number }>
-    /** 언제나 휴지통으로 보낸다. size 는 표시용(스캔 때 잰 값) — 삭제 허용 여부는 main 이 따로 검사한다. */
-    trash: (items: { path: string; size: number }[]) => Promise<{
+    /**
+     * 기본은 휴지통. size 는 표시용(스캔 때 잰 값) — 삭제 허용 여부는 main 이 따로 검사한다.
+     * mode 'permanent' 는 휴지통이 거절한 항목을 사용자가 보고 다시 누를 때만 쓴다.
+     */
+    trash: (
+      items: { path: string; size: number }[],
+      mode?: 'trash' | 'permanent',
+    ) => Promise<{
       ok: boolean
       error?: string
       freed?: number
-      results?: { path: string; ok: boolean; size?: number; error?: string }[]
+      elevated?: boolean
+      permanent?: boolean
+      results?: DiskTrashResult[]
     }>
     reveal: (path: string) => Promise<{ ok: boolean; error?: string }>
     history: () => Promise<{ ok: boolean; dir: string; items: DiskHistoryItem[] }>

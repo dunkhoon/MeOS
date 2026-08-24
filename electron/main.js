@@ -19,6 +19,7 @@ const { randomUUID } = require('node:crypto')
 const bts = require('./bts')
 const disk = require('./disk')
 const diskStore = require('./diskStore')
+const elevate = require('./elevate')
 const p4 = require('./p4')
 const llm = require('./llm')
 const review = require('./review')
@@ -30,6 +31,49 @@ const DEFAULT_APP_URL = 'https://meos.dunkhoon.workers.dev'
 const isDev = !app.isPackaged
 const PROTOCOL = 'privateplanner'
 const DEFAULT_HOTKEY = 'CommandOrControl+Shift+Space'
+
+// ── 관리자 권한으로 다시 열렸을 때 ─────────────────────────
+//
+// "관리자 권한으로 다시 실행" 은 UAC 를 먼저 띄우고(취소해도 쓰던 앱이 살아 있도록)
+// 그 다음에 이전 인스턴스를 닫는다. 그래서 이쪽(승격된 새 인스턴스)은 잠깐 겹쳐서 뜬다 —
+// 단일 인스턴스 잠금이 아직 이전 프로세스에 있으면 이 프로세스가 그대로 죽어 버린다.
+// **잠금을 잡기 전에** 여기서 기다리는 이유다. 창을 만들기 전이라 동기로 막아도 된다.
+;(function waitForPreviousInstance() {
+  try {
+    const arg = process.argv.find((a) => a.startsWith(elevate.WAIT_FLAG))
+    if (!arg) return
+    const pid = Number(arg.slice(elevate.WAIT_FLAG.length))
+    if (!Number.isInteger(pid) || pid <= 0) return
+
+    const alive = () => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch (e) {
+        return !!e && e.code === 'EPERM' // 신호는 못 보내도 살아 있다는 뜻
+      }
+    }
+    // Atomics.wait 가 막힌 컨텍스트가 있다(임베더에 따라 던진다) — 던지면 그냥 돌면서 기다린다.
+    const sab = new Int32Array(new SharedArrayBuffer(4))
+    let sleep = (ms) => Atomics.wait(sab, 0, 0, ms)
+    try {
+      sleep(1)
+    } catch {
+      sleep = (ms) => {
+        const end = Date.now() + ms
+        while (Date.now() < end) {
+          /* 승격 재실행 때만 도는 길이라 이 정도는 감수한다 */
+        }
+      }
+    }
+
+    const until = Date.now() + 20000 // 안 죽으면 그냥 진행한다(잠금에서 걸러진다)
+    while (Date.now() < until && alive()) sleep(150)
+  } catch (e) {
+    // 여기서 나는 어떤 문제도 앱 시작을 막으면 안 된다 — 못 기다렸으면 잠금이 알아서 거른다
+    console.error('[elevate] 이전 인스턴스 대기 실패', e && e.message)
+  }
+})()
 
 let mainWindow = null
 let tray = null
@@ -282,6 +326,57 @@ ipcMain.handle('app:reload', async (_e, hard) => {
   if (hard) await clearWebCache()
   loadApp()
   return { ok: true }
+})
+
+// ── 관리자 권한 ────────────────────────────────────────────
+//
+// 디스크 정리가 이걸 쓴다. 관리자가 아니면 스캔은 남의 폴더를 조용히 건너뛰고
+// 삭제는 실패한다 — 화면이 지금 권한을 보여 주고, 필요하면 승격해서 다시 열 수 있어야 한다.
+
+/** "항상 관리자로" 를 걸 대상. 개발 모드에서는 execPath 가 electron.exe 라 걸면 안 된다. */
+function alwaysAdminTarget() {
+  return app.isPackaged ? process.execPath : null
+}
+
+ipcMain.handle('app:elevation', async () => {
+  const target = alwaysAdminTarget()
+  const state = {
+    platformOk: process.platform === 'win32',
+    elevated: await elevate.isElevated(),
+    // 개발 모드에서도 승격 재실행은 된다(electron.exe 를 다시 띄운다)
+    canRelaunch: process.platform === 'win32',
+    // 항상 관리자로 = 설치본에만 건다
+    alwaysAdminAvailable: !!target,
+    alwaysAdmin: false,
+    exePath: target || process.execPath,
+  }
+  if (target) {
+    const r = await elevate.getAlwaysAdmin(target)
+    state.alwaysAdmin = !!r.on
+    if (!r.ok) state.error = r.error
+  }
+  return state
+})
+
+/**
+ * 관리자 권한으로 다시 연다. 승격 프로세스가 뜬 것을 확인한 **뒤에** 이쪽을 닫는다 —
+ * UAC 를 취소하면 { cancelled:true } 만 돌려주고 앱은 그대로 살아 있다.
+ */
+ipcMain.handle('app:relaunchElevated', async () => {
+  const r = await elevate.relaunchElevated()
+  if (!r.ok) return r
+  // 결과를 화면에 돌려준 다음 닫는다 (지금 닫으면 renderer 가 답을 못 받는다)
+  setTimeout(() => {
+    isQuitting = true
+    app.quit()
+  }, 400)
+  return { ok: true }
+})
+
+ipcMain.handle('app:setAlwaysAdmin', async (_e, on) => {
+  const target = alwaysAdminTarget()
+  if (!target) return { ok: false, error: '개발 모드에서는 걸 수 없습니다(설치한 앱에서만).' }
+  return elevate.setAlwaysAdmin(target, !!on)
 })
 
 ipcMain.handle('settings:getHotkey', () => getHotkey())
@@ -1138,13 +1233,24 @@ ipcMain.handle('disk:judge', async (_e, payload) => {
   }
 })
 
-/** 휴지통으로 보낸다. 영구 삭제는 하지 않는다 — 되돌릴 수 없는 동작을 자동 판단 뒤에 두지 않는다. */
+/**
+ * 지운다. 기본은 휴지통(mode 'trash')이고, 'permanent' 는 **휴지통이 거절한 항목을 보고**
+ * 사용자가 직접 다시 누를 때만 온다 — 화면이 그 버튼을 실패 뒤에만 띄운다.
+ *
+ * 어느 쪽이든 관문은 같다: 이번 세션에 스캔한 루트 안인지, 보호 대상은 아닌지
+ * (disk.validateDeletion). AI 판정도 화면의 목록도 이 관문을 대신하지 못한다.
+ *
+ * 휴지통이 실패하면 이유를 되짚어 준다. shell.trashItem 은 실패 이유를 안 알려 주고
+ * "Failed to perform delete operation" 한 줄만 준다 — 그대로 보여 주면 사용자가 할 게 없다.
+ */
 ipcMain.handle('disk:trash', async (_e, payload) => {
   // [{path, size}] — size 는 스캔 때 이미 잰 값이다. 여기서 다시 재지 않는다:
   // 224GB Intermediate 를 지우기 전에 크기를 다시 세면 삭제가 시작되기까지 수십 초가 걸린다.
   // (표시용 숫자라 화면이 준 값을 그대로 쓴다 — 삭제 여부는 아래 검증이 따로 정한다)
   const items = Array.isArray(payload?.items) ? payload.items : []
   if (!items.length) return { ok: false, error: '지울 항목이 없습니다.' }
+  const permanent = payload?.mode === 'permanent'
+  const elevated = await elevate.isElevated()
   const roots = [...diskScanned]
   const results = []
   let freed = 0
@@ -1156,16 +1262,42 @@ ipcMain.handle('disk:trash', async (_e, payload) => {
       results.push({ path: p, ok: false, error: bad })
       continue
     }
+    if (permanent) {
+      try {
+        await disk.removeForever(p)
+        freed += size
+        results.push({ path: p, ok: true, size, permanent: true })
+      } catch (err) {
+        const code = err && err.code
+        const denied = code === 'EPERM' || code === 'EACCES'
+        results.push({
+          path: p,
+          ok: false,
+          needsAdmin: denied && !elevated,
+          error: denied
+            ? elevated
+              ? '관리자 권한으로도 지울 수 없습니다(소유자가 다르거나 정책으로 잠긴 폴더).'
+              : '권한이 부족합니다 — 관리자 권한으로 다시 실행한 뒤 지우세요.'
+            : code === 'EBUSY'
+              ? '다른 프로그램이 쓰는 중입니다(에디터·빌드 등을 닫고 다시 시도).'
+              : err instanceof Error
+                ? err.message
+                : String(err),
+        })
+      }
+      continue
+    }
     try {
       await shell.trashItem(p)
       freed += size
       results.push({ path: p, ok: true, size })
     } catch (err) {
-      // 쓰는 중인 파일(에디터가 물고 있는 로그 등)은 여기서 실패한다 — 흔한 일이라 그대로 알린다
-      results.push({ path: p, ok: false, error: err instanceof Error ? err.message : String(err) })
+      const raw = err instanceof Error ? err.message : String(err)
+      const d = await disk.diagnoseTrashFailure(p, size, { elevated })
+      results.push({ path: p, ok: false, error: d.message, needsAdmin: d.needsAdmin, permanentOnly: d.permanentOnly, raw })
     }
   }
-  return { ok: results.some((r) => r.ok), results, freed }
+  return { ok: results.some((r) => r.ok), results, freed, elevated, permanent }
 })
 
 ipcMain.handle('disk:reveal', async (_e, p) => {

@@ -12,7 +12,11 @@
 //    LLM 이 "지워도 된다" 고 해서 보호 대상이 풀리는 일은 없다 — 모델이 헛것을 말해도
 //    사용자 데이터가 날아가면 안 된다.
 //
-// 2) **삭제는 언제나 휴지통.** 되돌릴 수 없는 동작을 AI 판단 뒤에 두지 않는다.
+// 2) **삭제는 기본이 휴지통.** 되돌릴 수 없는 동작을 AI 판단 뒤에 두지 않는다.
+//    영구 삭제(removeForever)는 휴지통이 **거절한 항목**에 한해, 실패 이유를 본 사용자가
+//    직접 한 번 더 고를 때만 열린다 — 휴지통 최대 용량(기본: 볼륨의 5%)보다 큰 폴더는
+//    아예 휴지통으로 못 가서, 그 길이 없으면 224GB Intermediate 를 영영 못 지운다.
+//    그 경우에도 보호 대상 검사(validateDeletion)는 똑같이 통과해야 한다.
 //
 // 3) **심볼릭 링크·정션은 따라가지 않는다.** 따라가면 같은 용량을 두 번 세고, 최악의 경우
 //    순환에 빠진다. 크기도 정션 자체는 0 으로 둔다.
@@ -899,6 +903,200 @@ function validateDeletion(p, roots) {
   return null
 }
 
+// ── 삭제 실패 진단 · 영구 삭제 ───────────────────────────────
+//
+// shell.trashItem 은 실패하면 언제나 "Failed to perform delete operation" 한 줄만 준다.
+// Electron 이 IFileOperation 을 FOF_NOERRORUI 로 돌려서 진짜 이유가 밖으로 안 나오기 때문이다.
+// 그 한 줄로는 사용자가 할 수 있는 게 없다 — 여기서 원인을 되짚어 다음 행동을 알려 준다.
+
+/**
+ * Windows MAX_PATH(260자) 우회 접두사. UE 프로젝트의 Intermediate 밑은 이 길이를 예사로 넘는다 —
+ * 접두사 없이는 존재하는 폴더를 "없다" 고 하거나 삭제가 통째로 실패한다.
+ */
+function longPath(p) {
+  if (process.platform !== 'win32') return p
+  const abs = path.resolve(p)
+  if (abs.startsWith('\\\\?\\')) return abs
+  if (abs.startsWith('\\\\')) return `\\\\?\\UNC\\${abs.slice(2)}`
+  return `\\\\?\\${abs}`
+}
+
+/**
+ * 이 폴더에 쓸 수 있는가. 권한 문제인지 아닌지를 가르는 유일하게 확실한 방법이다 —
+ * Windows 에서 fs.accessSync(W_OK) 는 읽기 전용 속성만 보지 ACL 은 보지 않는다.
+ * 임시 파일을 하나 만들었다 지운다(어차피 지울 폴더다).
+ */
+function probeWritable(p) {
+  try {
+    const st = fs.lstatSync(longPath(p))
+    if (!st.isDirectory() || st.isSymbolicLink()) {
+      // 파일이면 쓰기로 열어 본다 (다른 프로그램이 물고 있으면 EBUSY)
+      fs.closeSync(fs.openSync(longPath(p), 'r+'))
+      return null
+    }
+  } catch (e) {
+    return (e && e.code) || 'UNKNOWN'
+  }
+  const probe = longPath(path.join(p, `.meos-probe-${process.pid}`))
+  try {
+    fs.writeFileSync(probe, '')
+  } catch (e) {
+    return (e && e.code) || 'UNKNOWN'
+  }
+  // 치우는 데 실패해도 "쓸 수 있다" 는 답은 이미 나왔다 — 그걸 실패로 바꾸지 않는다
+  try {
+    fs.unlinkSync(probe)
+  } catch {
+    /* 어차피 지울 폴더다 */
+  }
+  return null
+}
+
+/**
+ * 휴지통 설정. 두 가지가 삭제를 조용히 막는다:
+ *   · MaxCapacity — 휴지통 최대 용량(MB). 이보다 큰 항목은 **휴지통으로 못 간다**.
+ *     224GB Intermediate 를 지울 때 실패하는 진짜 이유가 대개 이것이다(기본값이 볼륨의 5%다).
+ *   · NukeOnDelete / NoRecycleFiles — "휴지통을 쓰지 않음" 설정. 켜져 있으면 휴지통 이동 자체가 실패한다.
+ *
+ * 레지스트리 키 이름은 볼륨 GUID 라 드라이브 문자로 바꿔 줘야 한다(Get-Volume 의 UniqueId 로 잇는다).
+ * 못 읽어도 그냥 비워 둔다 — 진단이 조금 흐려질 뿐 삭제 자체를 막지는 않는다.
+ */
+let recycleCache = null
+function recycleInfo() {
+  if (process.platform !== 'win32') return Promise.resolve({})
+  if (recycleCache) return recycleCache
+  const script = [
+    "$out=@{};",
+    "$vol='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\BitBucket\\Volume';",
+    "$map=@{};",
+    "try { Get-Volume -ErrorAction Stop | Where-Object { $_.DriveLetter } | ForEach-Object {",
+    "  if ($_.UniqueId -match '(\\{[0-9a-fA-F-]+\\})') { $map[$Matches[1].ToLower()] = ($_.DriveLetter + ':') } } } catch {}",
+    "if (Test-Path $vol) { Get-ChildItem $vol | ForEach-Object {",
+    "  $g=$_.PSChildName.ToLower(); $p=Get-ItemProperty $_.PSPath;",
+    "  $d=$map[$g]; if ($d) { $out[$d]=@{ max=[int64]$p.MaxCapacity; nuke=[int]$p.NukeOnDelete } } } }",
+    "$pol=0; try { $pol=[int](Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer' -Name NoRecycleFiles -ErrorAction Stop).NoRecycleFiles } catch {}",
+    "@{ drives=$out; policyOff=$pol } | ConvertTo-Json -Compress -Depth 4",
+  ].join(' ')
+  recycleCache = new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, timeout: 20000, maxBuffer: 1 << 20 },
+      (err, stdout) => {
+        if (err) return resolve({})
+        try {
+          const j = JSON.parse(String(stdout || '').trim() || '{}')
+          const drives = {}
+          for (const [k, v] of Object.entries(j.drives || {})) {
+            drives[k.toUpperCase()] = {
+              maxBytes: Number(v?.max) > 0 ? Number(v.max) * 1024 * 1024 : null,
+              nuke: Number(v?.nuke) === 1,
+            }
+          }
+          resolve({ drives, policyOff: Number(j.policyOff) === 1 })
+        } catch {
+          resolve({})
+        }
+      },
+    )
+  })
+  return recycleCache
+}
+
+/**
+ * 휴지통 이동이 실패한 이유를 짚는다. 확실한 것부터 본다 —
+ * 첫 줄에 나오는 것이 사용자가 다음에 할 일이다.
+ *
+ * 돌려주는 값의 needsAdmin / permanentOnly 를 화면이 그대로 쓴다
+ * (각각 "관리자 권한으로 다시 실행" 과 "영구 삭제로 다시 시도" 버튼을 켜는 신호다).
+ */
+async function diagnoseTrashFailure(p, size, ctx = {}) {
+  const abs = String(p || '')
+  if (!fs.existsSync(longPath(abs))) {
+    return { message: '이미 사라진 경로입니다.', needsAdmin: false, permanentOnly: false }
+  }
+
+  const rc = await recycleInfo()
+  const letter = abs.slice(0, 2).toUpperCase()
+  const vol = (rc.drives || {})[letter] || {}
+
+  if (rc.policyOff || vol.nuke) {
+    return {
+      message: '이 PC 는 "휴지통을 쓰지 않음" 으로 설정돼 있어 휴지통 이동이 실패합니다. 영구 삭제로 지워야 합니다.',
+      needsAdmin: false,
+      permanentOnly: true,
+    }
+  }
+  if (vol.maxBytes && Number(size) > vol.maxBytes) {
+    return {
+      message:
+        `휴지통 최대 용량(${gb(vol.maxBytes)})보다 큽니다 — 휴지통으로는 못 보냅니다. ` +
+        '영구 삭제로 지우거나, 휴지통 크기를 늘린 뒤 다시 시도하세요.',
+      needsAdmin: false,
+      permanentOnly: true,
+    }
+  }
+
+  const code = probeWritable(abs)
+  if (code === 'EPERM' || code === 'EACCES') {
+    return {
+      message: ctx.elevated
+        ? '이 폴더는 관리자 권한으로도 쓸 수 없습니다(소유자가 다르거나 정책으로 잠긴 폴더).'
+        : '권한이 부족합니다 — 관리자 권한으로 다시 실행한 뒤 지우세요.',
+      needsAdmin: !ctx.elevated,
+      permanentOnly: false,
+    }
+  }
+  if (code === 'EBUSY') {
+    return { message: '다른 프로그램이 쓰는 중입니다(에디터·빌드 등을 닫고 다시 시도).', needsAdmin: false, permanentOnly: false }
+  }
+  if (abs.length > 240) {
+    return {
+      message: `경로가 너무 깁니다(${abs.length}자). 탐색기·휴지통은 260자를 못 넘습니다 — 영구 삭제로 시도해 보세요.`,
+      needsAdmin: false,
+      permanentOnly: true,
+    }
+  }
+
+  // 여기까지 왔으면 폴더 자체는 멀쩡하다 — 안쪽 어딘가가 잠겼거나 권한이 없다는 뜻이다.
+  // 원인을 모를 때는 **덜 위험한 쪽부터** 권한다: 먼저 관리자 권한, 그래도 안 되면 영구 삭제.
+  return {
+    message: ctx.elevated
+      ? '휴지통으로 못 보냈습니다. 안쪽 파일 하나가 잠겨 있거나 휴지통이 이 항목을 못 받는 상태입니다 — 영구 삭제로 시도해 보세요.'
+      : '휴지통으로 못 보냈습니다. 관리자 권한으로 다시 실행한 뒤 다시 눌러 보세요.',
+    needsAdmin: !ctx.elevated,
+    permanentOnly: !!ctx.elevated,
+  }
+}
+
+/**
+ * 되돌릴 수 없는 삭제. **사용자가 휴지통 실패를 보고 직접 고른 경우에만** 부른다 —
+ * 규칙도 LLM 도 이 길로 보내지 않는다(main.js 의 disk:trash 가 mode 를 따로 받는다).
+ *
+ * ⚠️ 비동기다. 이 모듈의 스캔은 동기라 도는 동안 앱이 멈추지만, 삭제는 그러면 안 된다 —
+ *    224GB 트리를 지우는 데 몇 분이 걸린다. fs.promises 는 libuv 스레드가 지우므로 창이 산다.
+ *
+ * 심볼릭 링크·정션은 링크만 끊는다. 따라 들어가면 원본이 날아간다.
+ */
+async function removeForever(p) {
+  const t = longPath(p)
+  const st = fs.lstatSync(t)
+  if (st.isSymbolicLink()) {
+    try {
+      await fs.promises.unlink(t)
+    } catch {
+      await fs.promises.rmdir(t)
+    }
+    return
+  }
+  if (st.isDirectory()) {
+    // maxRetries — 바이러스 검사·인덱서가 잠깐 물고 있는 파일이 흔하다
+    await fs.promises.rm(t, { recursive: true, force: true, maxRetries: 3, retryDelay: 120 })
+    return
+  }
+  await fs.promises.unlink(t)
+}
+
 module.exports = {
   listDrives,
   scanTree,
@@ -913,6 +1111,10 @@ module.exports = {
   buildJudgePrompt,
   mergeVerdicts,
   validateDeletion,
+  diagnoseTrashFailure,
+  removeForever,
+  longPath,
+  recycleInfo,
   isProtectedPath,
   isInside,
   norm,

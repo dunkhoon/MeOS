@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld('desktop', {
     setUrl: (url) => ipcRenderer.invoke('app:setUrl', url),
     // hard=true 면 서비스워커·캐시까지 비우고 다시 연다
     reload: (hard) => ipcRenderer.invoke('app:reload', !!hard),
+
+    // 관리자 권한 — 지금 권한 · 승격 재실행 · "항상 관리자로" 설정
+    elevation: () => ipcRenderer.invoke('app:elevation'),
+    /** UAC 를 취소하면 { ok:false, cancelled:true } 만 오고 앱은 그대로 살아 있다. */
+    relaunchElevated: () => ipcRenderer.invoke('app:relaunchElevated'),
+    setAlwaysAdmin: (on) => ipcRenderer.invoke('app:setAlwaysAdmin', !!on),
   },
 
   // 매직링크 딥링크(privateplanner://auth?code=...) 도착 시 콜백
@@ -86,7 +92,8 @@ contextBridge.exposeInMainWorld('desktop', {
     duplicates: (payload) => ipcRenderer.invoke('disk:duplicates', payload),
     cancel: (runId) => ipcRenderer.invoke('disk:cancel', runId),
     judge: (payload) => ipcRenderer.invoke('disk:judge', payload),
-    trash: (items) => ipcRenderer.invoke('disk:trash', { items }),
+    // mode 'permanent' 는 휴지통이 거절한 항목을 사용자가 보고 다시 누를 때만 쓴다
+    trash: (items, mode) => ipcRenderer.invoke('disk:trash', { items, mode: mode || 'trash' }),
     reveal: (p) => ipcRenderer.invoke('disk:reveal', p),
     // 스캔 이력 — 끝난 스캔은 파일로 남는다(화면을 옮겼다 와도, 앱을 껐다 켜도 남아 있다)
     history: () => ipcRenderer.invoke('disk:history'),
