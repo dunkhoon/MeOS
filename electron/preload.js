@@ -108,6 +108,17 @@ contextBridge.exposeInMainWorld('desktop', {
     },
   },
 
+  // UE 빌드 감시 (Windows 전용) — 읽기 전용. 빌드를 걸거나 죽이는 통로는 두지 않는다.
+  // status 한 번이 2초쯤 걸린다(WMI). 화면이 주기를 정해 스스로 되묻고, 겹치지 않게 막는다.
+  uebuild: {
+    getConfig: () => ipcRenderer.invoke('uebuild:getConfig'),
+    setConfig: (cfg) => ipcRenderer.invoke('uebuild:setConfig', cfg),
+    status: () => ipcRenderer.invoke('uebuild:status'),
+    pickEngine: () => ipcRenderer.invoke('uebuild:pickEngine'),
+    openLog: () => ipcRenderer.invoke('uebuild:openLog'),
+    revealLog: () => ipcRenderer.invoke('uebuild:revealLog'),
+  },
+
   // BTS (Redmine / JIRA) — 데스크톱 전용 실시간 조회. 결과는 메모리로만 전달된다.
   bts: {
     getConfig: () => ipcRenderer.invoke('bts:getConfig'),

@@ -356,6 +356,133 @@ interface Elevation {
   error?: string
 }
 
+// ── UE 빌드 감시 (Windows 전용) ──────────────────────────────
+
+/** UBT 인자에서 읽어낸 빌드 대상 한 건. 못 알아본 칸은 null 로 온다. */
+interface UeTargetSpec {
+  target: string | null
+  platform: string | null
+  configuration: string | null
+  project: string | null
+}
+
+type UeOriginKind =
+  | 'vs'
+  | 'rider'
+  | 'editor'
+  | 'claude'
+  | 'codex'
+  | 'meos'
+  | 'msbuild'
+  | 'vscode'
+  | 'terminal'
+  | 'explorer'
+  | 'ci'
+  | 'unknown'
+
+/** claude.exe 가 조상일 때만 채워진다 — `~/.claude/sessions/<pid>.json` 에서 읽는다. */
+interface UeClaudeSession {
+  name: string | null
+  sessionId: string | null
+  cwd: string | null
+  status: string | null
+}
+
+/** 이 빌드를 건 주체. 부모 프로세스 사슬로 판정한다. */
+interface UeOrigin {
+  kind: UeOriginKind
+  label: string
+  /** 세션 이름·솔루션 파일 등 한 줄 보탬 */
+  detail: string | null
+  /** 주체 프로세스의 pid. 추측일 때는 null */
+  pid: number | null
+  /** 'guess' 면 부모가 이미 끝나 커맨드라인 흔적으로 추측한 것 */
+  confidence: 'certain' | 'guess'
+  chain: { pid: number; name: string }[]
+  session?: UeClaudeSession
+}
+
+interface UeBuild {
+  pid: number
+  startedAt: string | null
+  elapsedMs: number | null
+  targets: UeTargetSpec[]
+  /** VS/MSBuild 가 띄웠다는 UBT 자체의 표시 */
+  fromMsBuild: boolean
+  hotReload: boolean
+  /** 에디터에서 Ctrl+Alt+F11 로 건 빌드 */
+  liveCoding: boolean
+  origin: UeOrigin
+  commandLine: string
+}
+
+/**
+ * 진행률. basis 가 다르면 의미가 다르다 —
+ * 'completed' 는 UBA 가 찍어 준 완료 개수, 'started' 는 분산 빌드에서 착수한 obj 개수.
+ */
+interface UeProgress {
+  done: number
+  total: number
+  basis: 'completed' | 'started'
+}
+
+interface UeLog {
+  ok: boolean
+  path: string
+  error?: string
+  size?: number
+  mtime?: string
+  ageMs?: number
+  /** 최근에 쓰인 로그인가 — 아니면 지난 빌드의 것이다 */
+  fresh?: boolean
+  executor?: string | null
+  phase?: 'prepare' | 'compile' | 'link' | 'done' | 'uptodate' | 'error'
+  building?: string | null
+  /** UBT 가 로그에 적어 둔 자기 커맨드라인 — 프로세스가 없어도 무엇을 빌드했는지 알 수 있다 */
+  commandLine?: string | null
+  targets?: UeTargetSpec[]
+  progress?: UeProgress | null
+  actions?: string[]
+  agents?: { ip: string; ok: boolean | null }[]
+  errors?: string[]
+  totalSeconds?: number | null
+  tail?: string[]
+}
+
+interface UeStatus {
+  ok: boolean
+  platformOk: boolean
+  at: string
+  error?: string
+  running?: boolean
+  /** 빌드 기미가 없어 프로세스 전수 조회를 건너뛴 회차 */
+  idle?: boolean
+  engineRoot?: string
+  engineRootDetected?: string | null
+  engineRootFromConfig?: boolean
+  builds: UeBuild[]
+  workers: { label: string; count: number }[]
+  /** 에디터가 떠 있으면 링크 단계에서 dll 을 못 덮어쓴다 */
+  editors: { pid: number; name: string; startedAt: string | null }[]
+  log?: UeLog | null
+}
+
+interface UeEngine {
+  root: string
+  source: 'source' | 'launcher'
+  name: string
+  /** 이 엔진의 UBT 로그가 마지막으로 쓰인 시각 */
+  logMtime: string | null
+}
+
+interface UeConfig {
+  platformOk: boolean
+  engineRoot: string
+  engineRootSaved: string
+  pollSec: number
+  engines: UeEngine[]
+}
+
 interface AppInfo {
   /** 지금 띄우고 있는 주소 */
   url: string
@@ -488,6 +615,14 @@ interface DesktopBridge {
     historyOpenDir: () => Promise<{ ok: boolean; error?: string }>
     /** 해제 함수를 돌려준다 */
     onProgress: (cb: (msg: DiskProgress) => void) => () => void
+  }
+  uebuild: {
+    getConfig: () => Promise<UeConfig>
+    setConfig: (cfg: { engineRoot?: string; pollSec?: number }) => Promise<{ ok: boolean; error?: string }>
+    status: () => Promise<UeStatus>
+    pickEngine: () => Promise<{ ok: boolean; dir?: string }>
+    openLog: () => Promise<{ ok: boolean; error?: string }>
+    revealLog: () => Promise<{ ok: boolean; error?: string }>
   }
   bts: {
     getConfig: () => Promise<BtsConfig>

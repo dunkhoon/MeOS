@@ -44,6 +44,13 @@ export const NAV: NavEntry[] = [
     keywords: ['퍼포스', 'p4', '체인지리스트', 'cl', '서밋', 'submit'],
   },
   {
+    to: '/ue',
+    label: 'UE 빌드',
+    icon: '⚙',
+    desktopOnly: true,
+    keywords: ['ue', '언리얼', 'unreal', '빌드', 'build', 'ubt', 'uebt', 'compile', '컴파일', 'fastbuild', 'incredibuild'],
+  },
+  {
     to: '/disk',
     label: '디스크 정리',
     icon: '▬',

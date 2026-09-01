@@ -13,6 +13,8 @@ build/
 out/
 web/dev-dist/
 dist-desktop/
+# tsc 의 증분 캐시 (`tsc --noEmit` 만 돌려도 생긴다)
+*.tsbuildinfo
 
 # 앱 아이콘은 생성물이지만 커밋한다 — 없으면 electron-builder 가 조용히 기본 아이콘을 쓴다
 !electron/build/

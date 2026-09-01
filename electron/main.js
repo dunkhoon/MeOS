@@ -24,6 +24,7 @@ const p4 = require('./p4')
 const llm = require('./llm')
 const review = require('./review')
 const reviewStore = require('./reviewStore')
+const uebuild = require('./uebuild')
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
 /** 배포 주소 기본값 — 설정에 저장된 값이 있으면 그쪽이 이긴다. */
@@ -982,6 +983,99 @@ ipcMain.handle('snippets:reveal', (_e, id) => {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
+})
+
+// ── UE 빌드 감시 (Windows 전용) ────────────────────────────
+//
+// 조회·해석은 uebuild.js(순수 Node)가 한다. 여기서는 두 가지만 맡는다.
+//   1) 엔진 경로를 정하는 일 — 설정값 > 도는 빌드에서 알아낸 값 > 등록된 엔진 중 최근 것
+//   2) 로그 파일 열기 (읽기 전용이다 — 빌드를 걸거나 죽이지 않는다)
+//
+// ⚠️ 알아낸 엔진 경로는 **설정에 적어 둔다.** 빌드가 도는 동안에만 알 수 있는 값인데,
+//    기억해 두지 않으면 빌드가 끝난 뒤 "마지막 빌드가 뭐였나" 를 못 읽는다.
+
+function uebuildCfgPath() {
+  return path.join(app.getPath('userData'), 'pp-uebuild.json')
+}
+
+function resolveUeConfig() {
+  const saved = readJson(uebuildCfgPath(), {})
+  return {
+    engineRoot: (saved.engineRoot || '').trim(),
+    /** 화면이 몇 초마다 다시 물을지. 조회 한 번이 2초 남짓이라 너무 짧으면 계속 겹친다. */
+    pollSec: Math.min(60, Math.max(3, Number(saved.pollSec) || 6)),
+  }
+}
+
+function saveUeConfig(next) {
+  writeJson(uebuildCfgPath(), { engineRoot: next.engineRoot, pollSec: next.pollSec })
+}
+
+ipcMain.handle('uebuild:getConfig', async () => {
+  const cfg = resolveUeConfig()
+  const engines = await uebuild.listEngines()
+  // 설정이 비어 있으면 **가장 최근에 빌드한 엔진**을 골라 둔다 (사용자가 아무것도 안 해도 된다)
+  let engineRoot = cfg.engineRoot
+  if (!engineRoot && engines.length) {
+    engineRoot = engines[0].root
+    saveUeConfig({ ...cfg, engineRoot })
+  }
+  return {
+    platformOk: process.platform === 'win32',
+    engineRoot,
+    engineRootSaved: cfg.engineRoot,
+    pollSec: cfg.pollSec,
+    engines,
+  }
+})
+
+ipcMain.handle('uebuild:setConfig', (_e, next) => {
+  if (!next || typeof next !== 'object') return { ok: false, error: '잘못된 설정' }
+  const cur = resolveUeConfig()
+  saveUeConfig({
+    engineRoot: typeof next.engineRoot === 'string' ? next.engineRoot.trim() : cur.engineRoot,
+    pollSec: Math.min(60, Math.max(3, Number(next.pollSec) || cur.pollSec)),
+  })
+  return { ok: true }
+})
+
+ipcMain.handle('uebuild:status', async () => {
+  const cfg = resolveUeConfig()
+  const snap = await uebuild.snapshot({ engineRoot: cfg.engineRoot, selfPid: process.pid })
+  // 도는 빌드에서 엔진 경로를 알아냈고 저장값과 다르면 갱신한다 — 엔진을 옮겨도 따라온다
+  if (snap.ok && snap.engineRootDetected && snap.engineRootDetected !== cfg.engineRoot) {
+    saveUeConfig({ ...cfg, engineRoot: snap.engineRootDetected })
+  }
+  return snap
+})
+
+ipcMain.handle('uebuild:pickEngine', async () => {
+  const cur = resolveUeConfig().engineRoot
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: '엔진 폴더 — Engine 의 부모를 고릅니다 (예: D:\\Work\\TT\\UE\\5.5)',
+    defaultPath: cur && fs.existsSync(cur) ? cur : app.getPath('home'),
+    properties: ['openDirectory'],
+  })
+  if (r.canceled || !r.filePaths.length) return { ok: false }
+  return { ok: true, dir: r.filePaths[0] }
+})
+
+ipcMain.handle('uebuild:openLog', async () => {
+  const { engineRoot } = resolveUeConfig()
+  if (!engineRoot) return { ok: false, error: '엔진 경로가 정해지지 않았습니다.' }
+  const file = uebuild.ubtLogPath(engineRoot)
+  if (!fs.existsSync(file)) return { ok: false, error: '로그 파일이 없습니다.' }
+  const err = await shell.openPath(file)
+  return err ? { ok: false, error: err } : { ok: true }
+})
+
+ipcMain.handle('uebuild:revealLog', () => {
+  const { engineRoot } = resolveUeConfig()
+  if (!engineRoot) return { ok: false, error: '엔진 경로가 정해지지 않았습니다.' }
+  const file = uebuild.ubtLogPath(engineRoot)
+  if (!fs.existsSync(file)) return { ok: false, error: '로그 파일이 없습니다.' }
+  shell.showItemInFolder(file)
+  return { ok: true }
 })
 
 // ── 디스크 정리 (Windows 전용) ─────────────────────────────

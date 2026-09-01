@@ -11,6 +11,7 @@ import ActivityDetail from './pages/ActivityDetail'
 import Report from './pages/Report'
 import Perforce from './pages/Perforce'
 import Disk from './pages/Disk'
+import UeBuild from './pages/UeBuild'
 import Trash from './pages/Trash'
 import Settings from './pages/Settings'
 import Assistant from './pages/Assistant'
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="/report" element={<Report />} />
               {desktop && <Route path="/perforce" element={<Perforce />} />}
               {desktop && <Route path="/disk" element={<Disk />} />}
+              {desktop && <Route path="/ue" element={<UeBuild />} />}
               <Route path="/trash" element={<Trash />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />

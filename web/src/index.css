@@ -6719,3 +6719,552 @@ button.st-row:hover .st-row-edit {
     display: none;
   }
 }
+
+/* ── UE 빌드 ─────────────────────────────────────────────────
+ *
+ * 색은 세 가지 뜻으로만 쓴다: 돌고 있음(초록) · 없음(회색) · 문제(빨강).
+ * 주체(누가 걸었나)는 종류별로 색을 달리해 한눈에 구분되게 하되, 그 색이 상태처럼
+ * 읽히지 않도록 배지 안쪽에만 가둔다. */
+
+.ub-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-height: 0;
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+.ub-hero-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.ub-hero-text {
+  min-width: 0;
+}
+.ub-hero-title {
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.ub-hero-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ub-poll {
+  padding: 1px;
+}
+.ub-poll .seg-btn {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+.ub-auto {
+  border-color: var(--border);
+  color: var(--muted);
+}
+.ub-auto.on {
+  background: color-mix(in srgb, var(--h-green) 12%, transparent);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--h-green) 35%, transparent);
+}
+
+/* 도는 중임을 알리는 점. 숨쉬듯 커졌다 작아진다 — 화면을 다시 안 봐도 살아 있는지 안다. */
+.ub-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--muted);
+}
+.ub-running .ub-dot {
+  background: var(--h-green);
+  animation: ub-pulse 1.6s ease-in-out infinite;
+}
+.ub-error .ub-dot {
+  background: var(--h-red);
+}
+.ub-running {
+  border-color: color-mix(in srgb, var(--h-green) 40%, var(--border));
+}
+.ub-error {
+  border-color: color-mix(in srgb, var(--h-red) 40%, var(--border));
+}
+@keyframes ub-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+/* 움직임을 줄여 달라고 한 사람에게는 깜빡이지 않는다 — 상태는 글자로도 다 적혀 있다 */
+@media (prefers-reduced-motion: reduce) {
+  .ub-running .ub-dot {
+    animation: none;
+  }
+}
+
+/* ── 주체 배지 ── */
+
+.ub-origin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.ub-origin-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  font-size: 18px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.ub-origin.compact .ub-origin-icon {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  border-radius: 7px;
+}
+.ub-origin-text {
+  min-width: 0;
+}
+.ub-origin-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.ub-origin.compact .ub-origin-label {
+  font-size: 13px;
+}
+.ub-guess {
+  background: color-mix(in srgb, var(--h-yellow) 12%, transparent);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--h-yellow) 35%, transparent);
+}
+
+.ub-origin-claude .ub-origin-icon,
+.ub-origin-codex .ub-origin-icon {
+  background: color-mix(in srgb, var(--h-purple) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-purple) 35%, transparent);
+  color: var(--ink-purple);
+}
+.ub-origin-editor .ub-origin-icon {
+  background: color-mix(in srgb, var(--h-pink) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-pink) 35%, transparent);
+  color: var(--ink-pink);
+}
+.ub-live {
+  background: color-mix(in srgb, var(--h-pink) 12%, transparent);
+  color: var(--ink-pink);
+  border-color: color-mix(in srgb, var(--h-pink) 35%, transparent);
+}
+.ub-origin-vs .ub-origin-icon,
+.ub-origin-rider .ub-origin-icon {
+  background: color-mix(in srgb, var(--h-blue) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-blue) 35%, transparent);
+  color: var(--ink-blue);
+}
+.ub-origin-msbuild .ub-origin-icon,
+.ub-origin-ci .ub-origin-icon {
+  background: color-mix(in srgb, var(--h-cyan) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-cyan) 35%, transparent);
+  color: var(--ink-cyan);
+}
+.ub-origin-terminal .ub-origin-icon,
+.ub-origin-vscode .ub-origin-icon,
+.ub-origin-explorer .ub-origin-icon {
+  background: color-mix(in srgb, var(--h-orange) 14%, transparent);
+  border-color: color-mix(in srgb, var(--h-orange) 35%, transparent);
+  color: var(--ink-orange);
+}
+.ub-origin-meos .ub-origin-icon {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--ink-accent);
+}
+
+/* ── 빌드 카드 ── */
+
+.ub-build {
+  min-height: 0;
+  margin-top: 12px;
+  padding: 16px 20px;
+}
+.ub-build-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ub-build-time {
+  text-align: right;
+  flex-shrink: 0;
+}
+.ub-elapsed {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ub-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.ub-target {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  min-width: 0;
+}
+.ub-target-cfg {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 판단 근거는 접어 둔다 — 평소엔 결론만 보면 되고, 못 믿을 때만 편다 */
+.ub-chain {
+  margin-top: 12px;
+}
+.ub-chain > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12.5px;
+  list-style: none;
+}
+.ub-chain > summary::-webkit-details-marker {
+  display: none;
+}
+.ub-chain > summary::before {
+  content: "▸ ";
+}
+.ub-chain[open] > summary::before {
+  content: "▾ ";
+}
+.ub-chain > summary:hover {
+  color: var(--text);
+}
+.ub-chain-body {
+  margin-top: 10px;
+}
+.ub-chain-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+}
+.ub-chain-arrow {
+  color: var(--muted);
+  margin: 0 4px;
+}
+.ub-chain-node {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ub-chain-node.hit {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  font-weight: 700;
+}
+.ub-cmd,
+.ub-log {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.ub-log {
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre;
+  word-break: normal;
+}
+
+/* ── 진행 상황 ── */
+
+.ub-progress,
+.ub-workers-card,
+.ub-finished,
+.ub-last {
+  min-height: 0;
+  margin-top: 12px;
+  padding: 16px 20px;
+}
+.ub-progress .card-title,
+.ub-workers-card .card-title,
+.ub-last .card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ub-exec {
+  background: var(--bg-elev);
+  border-color: var(--border);
+  color: var(--muted);
+}
+.ub-phase-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.ub-phase {
+  background: var(--bg-elev);
+  border-color: var(--border);
+  color: var(--muted);
+}
+.ub-phase-compile,
+.ub-phase-link {
+  background: color-mix(in srgb, var(--h-yellow) 12%, transparent);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--h-yellow) 35%, transparent);
+}
+.ub-phase-done {
+  background: color-mix(in srgb, var(--h-green) 12%, transparent);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--h-green) 35%, transparent);
+}
+.ub-phase-error {
+  background: color-mix(in srgb, var(--h-red) 12%, transparent);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--h-red) 35%, transparent);
+}
+
+.ub-bar-wrap {
+  margin-top: 12px;
+}
+.ub-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.ub-bar-fill {
+  height: 100%;
+  background: var(--h-green);
+  transition: width 0.4s ease;
+}
+.ub-bar-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 최근에 손댄 것들. 최신이 위로 온다 — 눈이 위에서부터 읽는다. */
+.ub-actions {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.7;
+  max-height: 190px;
+  overflow: auto;
+}
+.ub-actions li {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ub-actions li:first-child {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ub-agents {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.ub-agent {
+  background: var(--bg-elev);
+  border-color: var(--border);
+  color: var(--muted);
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-weight: 500;
+}
+.ub-agent.ok {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--h-green) 35%, transparent);
+}
+
+.ub-errors {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--h-red) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--h-red) 30%, transparent);
+}
+.ub-errors-head {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--danger);
+  margin-bottom: 6px;
+}
+.ub-error-line {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+/* ── 일꾼 · 경고 ── */
+
+.ub-workers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ub-worker {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+.ub-worker-n {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ub-worker-label {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ub-warn {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--h-yellow) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--h-yellow) 30%, transparent);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* ── 방금 끝남 · 마지막 빌드 ── */
+
+.ub-finished-head {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.ub-finished-row,
+.ub-last-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+}
+.ub-finished-target,
+.ub-last-target {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── 엔진 고르기 ── */
+
+.ub-engine-cur {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.ub-engine-path {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+.ub-engines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+.ub-engine {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.ub-engine:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.ub-engine.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.ub-engine-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.ub-engine-root {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 11.5px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+@media (max-width: 760px) {
+  /* 좁아지면 상태 줄이 두 단으로 접힌다 — 새로고침 컨트롤이 밖으로 밀리지 않게 */
+  .ub-hero,
+  .ub-build-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ub-build-time {
+    text-align: left;
+  }
+}
