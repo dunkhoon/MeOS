@@ -4,6 +4,8 @@ import dayjs from 'dayjs'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { ZONE_COLORS, hms, km, pendingWorkouts, workoutTargets, type Activity, type HrZone, type Workout } from '../../lib/exercise'
 import { SESSION_COLOR, SESSION_LABEL, sessionKind, type SessionKind } from '../../lib/session'
+import { BodyCheckIcon, BodyCheckReview } from '../BodyCheckReview'
+import { byDayMap, type BodyCheck } from '../../lib/bodyCheck'
 
 // 월간 훈련 캘린더 — 한 셀에 그날 훈련(거리 + 세션 종류)을 보여주고, 누르면 상세로 간다.
 // 지금은 "한 훈련"만 다룬다 (앞으로의 계획 표시는 별도 결정).
@@ -32,11 +34,24 @@ function readMonth(): dayjs.Dayjs {
   return dayjs().startOf('month')
 }
 
-export function TrainingCalendar({ activities, workouts = [] }: { activities: Activity[]; workouts?: Workout[] }) {
+export function TrainingCalendar({
+  activities,
+  workouts = [],
+  checks = [],
+}: {
+  activities: Activity[]
+  workouts?: Workout[]
+  /** 몸상태 판단 — 그날 칸에 아이콘으로 찍힌다 */
+  checks?: BodyCheck[]
+}) {
   const navigate = useNavigate()
   const [month, setMonth] = useState(readMonth)
   /** 눌러서 펼친 계획 */
   const [openPlan, setOpenPlan] = useState<Workout | null>(null)
+  /** 눌러서 펼친 몸상태 리뷰 */
+  const [openCheck, setOpenCheck] = useState<BodyCheck | null>(null)
+
+  const checkByDay = useMemo(() => byDayMap(checks), [checks])
 
   // 아직 소화 안 한 계획만 날짜별로. 기준은 paired_activity_id 다 —
   // 계획과 다른 걸 뛴 날에는 계획이 그대로 남아 있어야 한다.
@@ -154,6 +169,9 @@ export function TrainingCalendar({ activities, workouts = [] }: { activities: Ac
               style={list.length ? ({ '--sess': SESSION_COLOR[list[0].kind] } as CSSProperties) : undefined}
             >
               <span className="tcal-day">{d.date()}</span>
+              {checkByDay.has(key) && (
+                <BodyCheckIcon check={checkByDay.get(key)!} onClick={() => setOpenCheck(checkByDay.get(key)!)} />
+              )}
               {/* 계획은 실제 기록과 달라 보여야 한다 — 점선 테두리 */}
               {(planByDay.get(key) ?? []).map((w) => (
                 <button
@@ -206,10 +224,12 @@ export function TrainingCalendar({ activities, workouts = [] }: { activities: Ac
           <i className="tcal-lg-plan" />
           계획 (아직 안 함)
         </span>
+        <span className="tcal-lg">🙂 😐 😣 몸상태 (눌러서 리뷰)</span>
         <span className="muted small tcal-note">세션 종류는 활동 이름에서 추정합니다</span>
       </div>
 
       {openPlan && <PlanSheet w={openPlan} onClose={() => setOpenPlan(null)} />}
+      {openCheck && <BodyCheckReview check={openCheck} onClose={() => setOpenCheck(null)} />}
     </CollapsibleCard>
   )
 }

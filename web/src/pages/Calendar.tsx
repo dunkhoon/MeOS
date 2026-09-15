@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import dayjs from 'dayjs'
 import { fetchEvents, type CalEvent } from '../lib/calendar'
+import { BodyCheckIcon, BodyCheckReview } from '../components/BodyCheckReview'
+import { byDayMap, fetchBodyChecks, type BodyCheck } from '../lib/bodyCheck'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -22,6 +24,9 @@ export default function Calendar() {
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<CalEvent | null>(null)
   const [dayModal, setDayModal] = useState<string | null>(null)
+  // 운동 화면에서 남긴 몸상태 판단 — 그날 칸에 아이콘으로 찍고, 누르면 리뷰가 뜬다
+  const [checks, setChecks] = useState<BodyCheck[]>([])
+  const [openCheck, setOpenCheck] = useState<BodyCheck | null>(null)
 
   useEffect(() => {
     const from = month.startOf('month').startOf('week').toISOString()
@@ -34,6 +39,17 @@ export default function Calendar() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : JSON.stringify(e)))
       .finally(() => setLoading(false))
   }, [month])
+
+  // 일정과 따로 읽는다 — 몸상태 테이블이 아직 없어도 캘린더는 그대로 떠야 한다
+  useEffect(() => {
+    const from = month.startOf('month').startOf('week').format('YYYY-MM-DD')
+    const to = month.endOf('month').endOf('week').format('YYYY-MM-DD')
+    fetchBodyChecks(from, to)
+      .then(setChecks)
+      .catch(() => setChecks([]))
+  }, [month])
+
+  const checkByDay = useMemo(() => byDayMap(checks), [checks])
 
   const byDay = useMemo(() => {
     const m = new Map<string, CalEvent[]>()
@@ -96,11 +112,16 @@ export default function Calendar() {
             const dow = d.day()
             return (
               <div key={key} className={`cal-cell ${inMonth ? '' : 'dim'} ${isToday ? 'today' : ''}`}>
-                <div
-                  className={`cal-daynum ${dow === 0 ? 'sun' : ''} ${dow === 6 ? 'sat' : ''}`}
-                  onClick={() => setDayModal(key)}
-                >
-                  {d.date()}
+                <div className="cal-dayhead">
+                  <div
+                    className={`cal-daynum ${dow === 0 ? 'sun' : ''} ${dow === 6 ? 'sat' : ''}`}
+                    onClick={() => setDayModal(key)}
+                  >
+                    {d.date()}
+                  </div>
+                  {checkByDay.has(key) && (
+                    <BodyCheckIcon check={checkByDay.get(key)!} onClick={() => setOpenCheck(checkByDay.get(key)!)} />
+                  )}
                 </div>
                 <div className="cal-evs">
                   {dayEvents.slice(0, 3).map((e) => (
@@ -158,6 +179,8 @@ export default function Calendar() {
       )}
 
       {selected && <EventModal event={selected} onClose={() => setSelected(null)} />}
+
+      {openCheck && <BodyCheckReview check={openCheck} onClose={() => setOpenCheck(null)} />}
     </div>
   )
 }

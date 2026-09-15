@@ -30,6 +30,7 @@ import { ConditionPanel } from './ConditionPanel'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { alpha, ink } from '../../lib/color'
 import { fetchSessionRanges, matchedActivityIds } from '../../lib/strength'
+import { fetchBodyChecks, type BodyCheck } from '../../lib/bodyCheck'
 
 const TYPES_STORAGE_KEY = 'pp:ex:types'
 
@@ -40,6 +41,8 @@ export function ActivityTab({ syncNonce }: { syncNonce: number }) {
   const [races, setRaces] = useState<Race[]>([])
   // 훈련 계획 — 캘린더가 '아직 안 한 것' 만 띄운다
   const [workouts, setWorkouts] = useState<Workout[]>([])
+  // 몸상태 판단 — 컨디션 카드에서 남기고, 훈련 캘린더가 아이콘으로 보여 준다
+  const [checks, setChecks] = useState<BodyCheck[]>([])
   // 근력 탭에서 직접 기록한 세션과 겹치는 WeightTraining 은 여기서 감춘다.
   // 같은 운동이 "활동 1건 + 근력 세션 1건" 으로 두 번 세이면 주간 횟수가 부풀려진다.
   const [hidden, setHidden] = useState<Set<string>>(new Set())
@@ -54,18 +57,23 @@ export function ActivityTab({ syncNonce }: { syncNonce: number }) {
     // 계획은 앞뒤로 넉넉히 — 캘린더에서 지난달·다음달을 넘겨 볼 수 있어야 한다
     const planFrom = dayjs().subtract(1, 'year').format('YYYY-MM-DD')
     const planTo = dayjs().add(120, 'day').format('YYYY-MM-DD')
-    const [a, w, r, sr, wk] = await Promise.all([
+    // 몸상태 아이콘은 캘린더에서 지난달도 넘겨 보므로 넉넉히 (행이 작아 부담이 없다)
+    const checkFrom = dayjs().subtract(2, 'year').format('YYYY-MM-DD')
+    const [a, w, r, sr, wk, bc] = await Promise.all([
       fetchActivities(actSince),
       fetchWellness(wellSince),
       fetchRaces(),
       fetchSessionRanges(actSince),
       fetchWorkouts(planFrom, planTo),
+      // 마이그레이션 전이라도 나머지 화면은 그대로 떠야 한다
+      fetchBodyChecks(checkFrom, dayjs().format('YYYY-MM-DD')).catch(() => [] as BodyCheck[]),
     ])
     setActivities(a)
     setWellness(w)
     setRaces(r)
     setHidden(matchedActivityIds(sr, a))
     setWorkouts(wk)
+    setChecks(bc)
   }, [])
 
   const runLoad = useCallback(async () => {
@@ -213,7 +221,7 @@ export function ActivityTab({ syncNonce }: { syncNonce: number }) {
 
       {/* 세로로 쌓이는 블록들 — 카드 자체엔 바깥 여백이 없어서 여기서 한 번에 준다 */}
       <div className="ex-stack">
-        <TrainingCalendar activities={filtered} workouts={workouts} />
+        <TrainingCalendar activities={filtered} workouts={workouts} checks={checks} />
 
         <div className="ex-grid">
           <DistanceChart activities={filtered} types={selectedTypes} />
@@ -224,7 +232,13 @@ export function ActivityTab({ syncNonce }: { syncNonce: number }) {
             <RecentActivities activities={filtered} />
           </CollapsibleCard>
           <FitnessPanel wellness={wellness} />
-          <ConditionPanel wellness={wellness} />
+          <ConditionPanel
+            wellness={wellness}
+            activities={activities}
+            checks={checks}
+            // 저장된 판단만 갈아 끼운다 — 전체를 다시 읽으면 화면이 통째로 깜빡인다
+            onCheckSaved={(c) => setChecks((prev) => [...prev.filter((x) => x.day !== c.day), c])}
+          />
         </div>
 
         {/* 자주 보는 정보는 아니라 맨 아래 */}

@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { conditionSeries, conditionSummary, type Wellness } from '../../lib/exercise'
+import { conditionSeries, conditionSummary, type Activity, type Wellness } from '../../lib/exercise'
 import { CollapsibleCard } from '../CollapsibleCard'
 import { chartMargin, pinnedTooltipProps, useCoarsePointer } from '../../lib/chart'
+import { BodyCheckSection } from './BodyCheck'
+import type { BodyCheck } from '../../lib/bodyCheck'
 
 type MetricKey = 'restingHr' | 'hrv' | 'sleep' | 'sleepScore' | 'weight'
 
@@ -15,7 +17,18 @@ const METRICS: Record<MetricKey, { label: string; unit: string; color: string; d
   weight: { label: '체중', unit: 'kg', color: 'var(--ok)' },
 }
 
-export function ConditionPanel({ wellness }: { wellness: Wellness[] }) {
+export function ConditionPanel({
+  wellness,
+  activities,
+  checks,
+  onCheckSaved,
+}: {
+  wellness: Wellness[]
+  activities: Activity[]
+  /** 몸상태 판단 기록 — 오늘 것이 있으면 판정을 띄운다 */
+  checks: BodyCheck[]
+  onCheckSaved: (check: BodyCheck) => void
+}) {
   const [metric, setMetric] = useState<MetricKey>('hrv')
   const coarse = useCoarsePointer()
   const s = conditionSummary(wellness)
@@ -33,6 +46,9 @@ export function ConditionPanel({ wellness }: { wellness: Wellness[] }) {
 
   return (
     <CollapsibleCard id="ex-condition" title="컨디션 / 웰니스">
+      {/* 수치를 보여 주는 카드 안에 "그래서 오늘 뛰어도 되나" 를 같이 둔다 */}
+      <BodyCheckSection wellness={wellness} activities={activities} checks={checks} onSaved={onCheckSaved} />
+
       <div className="cond-tiles">
         {tiles.map((t) => (
           <button

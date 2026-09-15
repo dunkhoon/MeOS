@@ -285,6 +285,9 @@ Electron 은 창·트레이·전역 단축키와 로컬 권한이 필요한 일(
 - `wellness` — intervals.icu `/wellness` (일자별 컨디션 + 훈련부하)
   - `id`(날짜), `ctl`(=Fitness), `atl`(=Fatigue), **`form` = ctl − atl (=TSB, 계산값)**, `hrv`, `restingHR`, `sleepSecs`, `sleepScore`, `steps`, `weight`, `vo2max`
 - `gear` — 러닝화 및 누적 마일리지 ⚠️ **소스 미정** (§9 — intervals.icu에 gear 데이터 없음)
+- `body_checks` — 몸상태 판단 (하루 한 건, 0018)
+  - `level`('good'|'caution'|'bad') + `flag_count`, `signals`(판단 당시 값·기준을 통째로 박아 둔 jsonb),
+    `answers`(다리 무거움·뻣뻣함·통증), `recovery_until`(가민 회복 시간이 끝나는 시각)
 - `reports` — 자동 주간/월간 요약 스냅샷 (개인 데이터만, 업무 제외)
 - `sync_state` — 소스별 마지막 동기화 시각/상태
 - `work_items` — 진행 중인 업무 + 할 일 (한 테이블, `list`로 구분 → 서로 이동은 컬럼 값 변경)
@@ -345,6 +348,20 @@ Electron 은 창·트레이·전역 단축키와 로컬 권한이 필요한 일(
   CLI(`npm run sync`)도 이제 함수를 호출만 한다. 호출자는 세 갈래:
   앱=사용자 JWT / CLI=service_role 키 / cron=Vault 에 넣은 service_role 키.
   기본은 **최근 60일**만 당기고, 과거 전체는 `full` 옵션(운동 화면 "전체 기간" 버튼 · `npm run sync:full`).
+- **몸상태 판단**(2026-09-15, `lib/bodyCheck.ts` · 0018). 운동 화면 "컨디션 / 웰니스" 카드에서 누르면
+  다섯 신호로 오늘 훈련해도 되는지 판정한다: ①가민 회복 시간이 남음 ②수면 6시간 미만
+  ③HRV 가 **직전 7일 평균** 대비 10% 이상 하락 ④안정시심박이 **평소(직전 28일 중앙값)** 보다 3bpm 이상 상승
+  ⑤주관적 신호(다리 무거움·국소 뻣뻣함·통증 — 질문지). 켜진 신호 0개=좋음 🙂 / 1~2개=주의 😐 / 3개 이상=나쁨 😣.
+  판정은 **운동 화면 훈련 캘린더와 캘린더 화면 양쪽에 아이콘**으로 찍히고, 누르면 그날 리뷰가 뜬다.
+  ⚠️ 판단 근거(`signals`)를 저장 시점 값으로 박아 둔다 — 웰니스가 나중에 다시 동기화돼도 과거 아이콘이
+  슬그머니 바뀌면 안 된다. 데이터가 없는 신호는 '판단 불가' 로 빼고 세지 않는다.
+- **가민 회복 시간은 API 로 가져올 수 없다**(2026-09-15 직접 확인). Forerunner 255 는 Training Readiness
+  미지원이라 `/metrics-service/metrics/trainingreadiness/{날짜}` 가 빈 배열이고, `trainingstatus/aggregated` ·
+  `usersummary/daily` · `hrv-service` · 활동 상세 어디에도 `recoveryTime` 이 없다(활동엔 `recoveryHeartRate` 뿐).
+  **원본 FIT 파일까지 받아 파싱**해도 session 메시지에 회복 시간이 없다 — 가민이 서드파티에 넘기기 전에
+  비공개 필드를 지운다. intervals.icu 의 활동/웰니스 183개 필드에도 없다.
+  → 시계에 뜬 값을 질문지에서 한 번 받아 **끝나는 시각**으로 저장하고, 다음 판단 때 남은 시간을 계산해
+  기본값으로 채운다. 그 사이 새 활동이 있으면 "시계를 한 번 보라" 고 알린다.
 
 ## 10. 로드맵 (제안)
 
