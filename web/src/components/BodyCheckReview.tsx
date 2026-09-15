@@ -161,22 +161,41 @@ export function BodyCheckReview({
  * ⚠️ 숫자와 판정은 **여기서 다 계산해서** 넘긴다 (foodAdvice 와 같은 원칙).
  *    에이전트에게 산수를 시키면 같은 날을 두 번 물었을 때 근거가 달라진다.
  *    에이전트가 할 일은 메모의 자유문장을 읽고 "그래서 오늘 뭘 할지" 를 정하는 것이다.
+ *
+ * ⚠️ **오늘의 증상은 여기 실린 것이 전부라고 못박는다.** 에이전트는 지난 대화와 과거
+ *    기록을 같이 보기 때문에, 그냥 물으면 예전 증상을 오늘 것으로 끌어다 쓴다.
+ *    실제로 메모에는 "감기 기운" 만 적었는데 **9/14 활동 코멘트에 적혀 있던 "오른쪽 불편감"**
+ *    을 근거로 휴식을 권했다(2026-09-15). 없는 증상으로 쉬라는 답은 틀린 답이다.
+ *    (대화 자체를 새로 여는 건 Assistant 화면이 맡는다 — 대화마다 에이전트 세션이 갈린다)
  */
 function askAboutCheck(check: BodyCheck) {
   const signals = (check.signals ?? []) as SignalResult[]
   const m = faceFor(check.level, check.answers?.illness)
+  const illness = (check.answers?.illness ?? []).map((f) => ILLNESS_META[f].label)
+  const question = [
+    `${dayjs(check.day).format('M월 D일')} 몸상태 판단 결과야. 오늘 훈련을 어떻게 할지(쉴지 / 얼마나 · 어떤 강도로) 알려줘.`,
+    '',
+    '⚠️ 오늘의 증상·통증은 **위 맥락에 적힌 것이 전부다.** 거기 없는 부위나 증상은 없는 것으로 봐라.',
+    '특히 **활동 코멘트(예전 AI 분석)에 적힌 통증·부위는 그날의 것이지 오늘 것이 아니다.**',
+    '지난 대화에서 오갔던 증상도 마찬가지다. 없는 증상을 근거로 쉬라고 하면 틀린 답이다.',
+    'meos_overview 등 도구는 최근 훈련량·부하 흐름을 보는 데만 쓰고, 오늘 증상 판단에는 쓰지 마라.',
+    '숫자는 앱이 이미 계산해 뒀으니 다시 나열하지 말고, 메모 문장을 판정과 함께 해석해서 다음 행동만 말해 줘.',
+  ].join('\n')
+
   return {
-    question:
-      `오늘(${dayjs(check.day).format('M월 D일')}) 몸상태 판단 결과야. 훈련 질문이야 — ` +
-      'meos_overview 로 최근 훈련·컨디션을 같이 보고, 오늘 어떻게 할지(쉴지 / 얼마나 · 어떤 강도로 뛸지) 알려줘. ' +
-      '아래는 앱이 규칙으로 판정해 둔 값이니 숫자를 다시 나열하지 말고, ' +
-      '특히 **메모에 적은 예외 상황**(아픔·부상·컨디션 등)을 판정과 함께 해석해서 다음 행동만 말해 줘.',
+    question,
     context: {
       날짜: check.day,
       판정: `${m.label} (신호 ${check.flag_count}개)`,
-      신호: signals.map((s) => `${SIGNAL_LABEL[s.key]}: ${s.value} — ${s.basis}${s.tripped === true ? ' [신호 켜짐]' : s.tripped == null ? ' [판단 불가]' : ''}`),
-      아픔부상: (check.answers?.illness ?? []).map((f) => ILLNESS_META[f].label),
-      메모: check.note,
+      신호: signals.map(
+        (s) =>
+          `${SIGNAL_LABEL[s.key]}: ${s.value} — ${s.basis}` +
+          (s.tripped === true ? ' [신호 켜짐]' : s.tripped == null ? ' [판단 불가]' : ''),
+      ),
+      아픔부상: illness.length ? illness : '없음',
+      불편부위: check.answers?.area?.trim() || '없음',
+      // 메모는 손대지 않고 원문 그대로. 오늘 증상의 유일한 출처다.
+      메모_원문_전체: check.note ?? '(메모 없음)',
       규칙기반권고: trippedAdvice(signals),
     },
   }

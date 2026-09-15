@@ -70,13 +70,15 @@ export default function Assistant() {
   }, [loadThreads, loadMessages])
 
   const send = useCallback(
-    async (content: string, context?: unknown) => {
+    async (content: string, context?: unknown, opts?: { newThread?: boolean }) => {
       const text = content.trim()
       if (!text || sending) return
       setSending(true)
       setError(null)
       try {
-        const r = await askQuestion({ threadId, content: text, context })
+        // newThread 는 **인자로** 받는다. setThreadId(null) 로는 안 된다 —
+        // 이미 만들어진 이 클로저는 다음 렌더까지 옛 threadId 를 그대로 본다.
+        const r = await askQuestion({ threadId: opts?.newThread ? null : threadId, content: text, context })
         setThreadId(r.threadId)
         setInput('')
         await loadMessages(r.threadId)
@@ -90,15 +92,20 @@ export default function Assistant() {
     [threadId, sending, loadMessages, loadThreads],
   )
 
-  // 다른 화면에서 '물어보기' 로 넘어온 경우 — 새 대화에서 시작한다
+  // 다른 화면에서 '물어보기' 로 넘어온 경우 — **반드시 새 대화**에서 시작한다.
+  //
+  // ⚠️ 여기서 옛 대화에 얹으면 화면 질문이 **지난 대화의 맥락을 그대로 물려받는다.**
+  //    플러그인이 대화(thread)마다 에이전트 세션을 가르기 때문이다(inbound.ts 참고) —
+  //    실제로 며칠 전 대화에 나왔던 통증 부위를 오늘 몸상태 답에 끌어다 쓴 일이 있었다.
+  //    예전엔 `setThreadId(null)` 로 비우려 했는데, setState 는 다음 렌더에 반영되므로
+  //    바로 이어서 부른 send 는 여전히 **직전에 열려 있던 대화**로 보냈다. 인자로 넘긴다.
   useEffect(() => {
     const payload = location.state as AskPayload | null
     if (seeded.current || !payload?.question || loading) return
     seeded.current = true
     // state 를 지워 둔다. 안 지우면 뒤로 갔다 오면서 같은 질문이 또 나간다.
     navigate(location.pathname, { replace: true, state: null })
-    setThreadId(null)
-    void send(payload.question, payload.context)
+    void send(payload.question, payload.context, { newThread: true })
   }, [location, loading, navigate, send])
 
   // 답을 기다리는 동안만 훑는다
