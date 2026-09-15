@@ -7545,3 +7545,20 @@ button.st-row:hover .st-row-edit {
     right: 2px;
   }
 }
+
+/* 아픔·부상은 '고른 값' 이 아니라 '경고' 라 다른 칩과 같은 색이면 안 된다 */
+.bc-chip.active.danger {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+.bc-answer.danger {
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  color: var(--text);
+}
+/* 리뷰 하단 — AI 버튼은 왼쪽, 다시 판단은 오른쪽 */
+.bc-review-actions {
+  justify-content: space-between;
+}
+.bc-review-actions .ask-btn {
+  margin-right: auto;
+}

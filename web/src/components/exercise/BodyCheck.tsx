@@ -2,15 +2,19 @@ import { useMemo, useState, type CSSProperties } from 'react'
 import dayjs from 'dayjs'
 import {
   EMPTY_ANSWERS,
-  LEVEL_META,
+  ILLNESS_FLAGS,
+  ILLNESS_META,
   SIGNAL_LABEL,
   SUBJECTIVE_QUESTIONS,
   byDayMap,
   evaluateBodyCheck,
+  faceFor,
+  illnessHint,
   recoveryHint,
   saveBodyCheck,
   type AnswerValue,
   type BodyCheck,
+  type IllnessFlag,
   type SignalResult,
   type SubjectiveAnswers,
 } from '../../lib/bodyCheck'
@@ -38,7 +42,8 @@ export function BodyCheckSection({
 
   const today = dayjs().format('YYYY-MM-DD')
   const check = byDayMap(checks).get(today) ?? null
-  const m = check ? LEVEL_META[check.level] : null
+  // 아파서 나쁜 날은 '나쁨' 이 아니라 **왜** 나쁜지를 얼굴로 보여 준다 (🤒 · 🤕)
+  const m = check ? faceFor(check.level, check.answers?.illness) : null
 
   return (
     <div className="bc-bar">
@@ -127,8 +132,12 @@ function BodyCheckSheet({
 }) {
   // 지난 판단에서 받아 둔 회복 시간을 지금 시점으로 굴려 기본값으로 쓴다 (가민이 API 로 안 준다)
   const hint = useMemo(() => recoveryHint(checks, activities), [checks, activities])
+  // 감기·부상은 하루로 안 끝난다 — 지난 판단 것을 켜 둔 채로 시작하고 아래에서 다시 물어본다
+  const carried = useMemo(() => illnessHint(checks), [checks])
   const [recovery, setRecovery] = useState<number | null>(hint ? hint.hours : null)
-  const [answers, setAnswers] = useState<SubjectiveAnswers>(existing?.answers ?? EMPTY_ANSWERS)
+  const [answers, setAnswers] = useState<SubjectiveAnswers>(
+    existing?.answers ?? { ...EMPTY_ANSWERS, illness: carried?.flags ?? [] },
+  )
   const [note, setNote] = useState(existing?.note ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,12 +146,19 @@ function BodyCheckSheet({
     () => evaluateBodyCheck({ wellness, day, recoveryHours: recovery, answers }),
     [wellness, day, recovery, answers],
   )
-  const m = LEVEL_META[verdict.level]
+  const m = faceFor(verdict.level, answers.illness)
   // 자동으로 나오는 신호만 따로 — 질문지에서는 읽기만 한다
   const autoSignals = verdict.signals.filter((s) => s.key === 'sleep' || s.key === 'hrv' || s.key === 'restingHr')
 
   const set = (key: 'heaviness' | 'stiffness' | 'pain', v: AnswerValue) =>
     setAnswers((prev) => ({ ...prev, [key]: v }))
+
+  const illness = answers.illness ?? []
+  const toggleIllness = (f: IllnessFlag) =>
+    setAnswers((prev) => {
+      const cur = prev.illness ?? []
+      return { ...prev, illness: cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f] }
+    })
 
   async function save() {
     setSaving(true)
@@ -256,6 +272,41 @@ function BodyCheckSheet({
             value={answers.area ?? ''}
             onChange={(e) => setAnswers((prev) => ({ ...prev, area: e.target.value }))}
           />
+        </div>
+
+        {/* ④ 아픔·부상 — 개수로 세는 게 아니라 판정을 덮는 항목이라 따로 둔다 */}
+        <div className="st-sheet-sec">
+          <div className="st-sheet-label">아픔 · 부상 (있으면 고르기)</div>
+          <div className="bc-chips">
+            <button
+              type="button"
+              className={`bc-chip ${illness.length === 0 ? 'active' : ''}`}
+              onClick={() => setAnswers((prev) => ({ ...prev, illness: [] }))}
+            >
+              없음
+            </button>
+            {ILLNESS_FLAGS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={`bc-chip ${illness.includes(f) ? 'active danger' : ''}`}
+                title={ILLNESS_META[f].hint}
+                onClick={() => toggleIllness(f)}
+              >
+                {ILLNESS_META[f].icon} {ILLNESS_META[f].label}
+              </button>
+            ))}
+          </div>
+          {carried && !existing && (
+            <p className="muted small bc-hint">
+              {dayjs(carried.from).format('M/D')} 판단에서 {carried.flags.map((f) => `'${ILLNESS_META[f].label}'`).join(' · ')}{' '}
+              을 표시했어요 — <b>아직 그런가요?</b> 나았으면 '없음' 을 눌러 주세요.
+            </p>
+          )}
+          <p className="muted small bc-hint">
+            발열·몸살과 부상은 <b>다른 신호가 다 좋아도 '나쁨'</b> 으로 갑니다. 목 위 증상(감기 기운)만이면
+            가볍게는 가능하되 강도를 올리지 않습니다.
+          </p>
         </div>
 
         <div className="st-sheet-sec">

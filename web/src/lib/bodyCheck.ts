@@ -10,7 +10,7 @@ import type { Activity, Wellness } from './exercise'
 // 네 개는 데이터에서 자동으로 나오고, 주관 신호 하나만 질문지로 받는다.
 // 회복 시간은 가민이 API 로 주지 않아(아래) 질문지에서 받되 한 번 받으면 카운트다운한다.
 
-export type SignalKey = 'recovery' | 'sleep' | 'hrv' | 'restingHr' | 'subjective'
+export type SignalKey = 'recovery' | 'sleep' | 'hrv' | 'restingHr' | 'subjective' | 'illness'
 
 export type Level = 'good' | 'caution' | 'bad'
 
@@ -20,6 +20,7 @@ export const SIGNAL_LABEL: Record<SignalKey, string> = {
   hrv: 'HRV',
   restingHr: '안정시심박',
   subjective: '주관적 신호',
+  illness: '아픔 · 부상',
 }
 
 /** 신호가 켜졌을 때 오늘 훈련을 어떻게 낮출지 — 리뷰에 그대로 보여 준다 */
@@ -29,12 +30,75 @@ export const SIGNAL_ADVICE: Record<SignalKey, string> = {
   hrv: '자율신경이 아직 안 돌아왔다. 강도보다 회복을 먼저.',
   restingHr: '심박이 평소보다 높다. 피로·수면 부족·잔병 신호일 수 있다.',
   subjective: '몸이 보내는 신호가 수치보다 빠를 때가 많다. 통증이면 훈련보다 원인부터.',
+  // 실제 문구는 무엇을 골랐느냐에 따라 ILLNESS_META 에서 나온다 (SignalResult.advice)
+  illness: '아픈 날은 훈련이 회복을 돕지 않는다. 낫는 걸 먼저.',
 }
 
 export const LEVEL_META: Record<Level, { label: string; icon: string; color: string; summary: string }> = {
   good: { label: '좋음', icon: '🙂', color: 'var(--ok)', summary: '계획대로 해도 되는 날' },
   caution: { label: '주의', icon: '😐', color: 'var(--warn)', summary: '강도를 한 단계 낮춰서' },
   bad: { label: '나쁨', icon: '😣', color: 'var(--danger)', summary: '쉬거나 회복 조깅까지' },
+}
+
+// ── 아픔 · 부상 ───────────────────────────────────────────
+//
+// ⚠️ 이건 **신호 하나로 세면 안 된다.** 개수로 세면 "감기 기운 + 나머지 정상 = 1개 = 주의"
+//    가 되어 열이 나는데 강도만 한 단계 낮춰 뛰라는 말이 된다.
+//    그래서 발열·부상은 **거부권**이다 — 다른 게 다 좋아도 판정을 '나쁨' 으로 끌어내린다.
+//
+// 기준은 스포츠의학의 넥 체크(neck check): 증상이 **목 위**(코막힘·인후 간질)면 가볍게는
+// 가능하되 강도를 올리지 않고, **목 아래**(발열·기침·몸살)면 쉰다. 발열 중 운동은
+// 심근염 위험이 있어 예외를 두지 않는다.
+
+export type IllnessFlag = 'cold' | 'fever' | 'injury'
+
+export const ILLNESS_META: Record<
+  IllnessFlag,
+  { label: string; hint: string; icon: string; veto: boolean; advice: string }
+> = {
+  cold: {
+    label: '감기 기운',
+    hint: '목 위 — 코막힘 · 인후 간질',
+    icon: '🙁',
+    veto: false,
+    advice: '목 위 증상만이면 가볍게는 가능하다. 강도는 올리지 말고, 목 아래로 내려오면 그날로 쉰다.',
+  },
+  fever: {
+    label: '발열 · 몸살',
+    hint: '목 아래 — 열 · 기침 · 근육통',
+    icon: '🤒',
+    veto: true,
+    advice: '발열 중에는 훈련하지 않는다 (심근염 위험). 열이 내린 뒤에도 하루는 더 쉬고 걷기부터.',
+  },
+  injury: {
+    label: '부상 의심',
+    hint: '한 부위가 계속 · 점점 아프다',
+    icon: '🤕',
+    veto: true,
+    advice: '그 부위를 쓰는 훈련은 멈춘다. 참고 뛰면 보상 동작으로 다른 데가 상한다.',
+  },
+}
+
+export const ILLNESS_FLAGS: IllnessFlag[] = ['cold', 'fever', 'injury']
+
+/** 거부권을 가진 것 중 먼저 걸리는 것 (발열이 부상보다 급하다) */
+function vetoOf(flags: IllnessFlag[]): IllnessFlag | null {
+  return flags.find((f) => ILLNESS_META[f].veto) ?? null
+}
+
+/**
+ * 캘린더에 찍을 얼굴. 거부권이 걸린 날은 '나쁨' 이 아니라 **왜 나쁜지**를 보여 준다 —
+ * 달력을 넘겨 보다가 🤕 를 보면 그날 무슨 일이 있었는지 열어 보지 않아도 안다.
+ */
+export function faceFor(
+  level: Level,
+  illness: IllnessFlag[] = [],
+): { icon: string; label: string; color: string; summary: string } {
+  const base = LEVEL_META[level]
+  const veto = vetoOf(illness)
+  if (veto === 'fever') return { ...base, icon: ILLNESS_META.fever.icon, label: '아픔', summary: '오늘은 훈련하지 않는다' }
+  if (veto === 'injury') return { ...base, icon: ILLNESS_META.injury.icon, label: '부상', summary: '그 부위를 쓰는 훈련은 멈춘다' }
+  return base
 }
 
 // ── 기준값 ────────────────────────────────────────────────
@@ -64,9 +128,11 @@ export interface SubjectiveAnswers {
   pain: AnswerValue
   /** 뻣뻣함·통증이 있는 부위 (자유 입력) */
   area?: string
+  /** 감기·발열·부상. 0018 이전 기록에는 없다 — 읽을 때 항상 `?? []` 로 받는다. */
+  illness?: IllnessFlag[]
 }
 
-export const EMPTY_ANSWERS: SubjectiveAnswers = { heaviness: 0, stiffness: 0, pain: 0, area: '' }
+export const EMPTY_ANSWERS: SubjectiveAnswers = { heaviness: 0, stiffness: 0, pain: 0, area: '', illness: [] }
 
 export const SUBJECTIVE_QUESTIONS: {
   key: 'heaviness' | 'stiffness' | 'pain'
@@ -119,11 +185,15 @@ export interface SignalResult {
   value: string
   /** 무엇과 비교했는지 — "최근 7일 평균 52 ms 대비 -15%" */
   basis: string
+  /** 신호마다 고정된 권고(SIGNAL_ADVICE) 대신 쓸 문구. 아픔·부상처럼 고른 항목에 따라 달라질 때만. */
+  advice?: string
 }
 
 export interface Verdict {
   level: Level
   flagCount: number
+  /** 개수와 무관하게 판정을 '나쁨' 으로 끌어내린 항목 (발열·부상) */
+  veto: IllnessFlag | null
   signals: SignalResult[]
   /** 켜진 신호에 대한 권고 (리뷰에 그대로 뿌린다) */
   advice: string[]
@@ -242,12 +312,27 @@ export function evaluateBodyCheck({ wellness, day, recoveryHours, answers }: Eva
     basis: `합계 ${score}점 · ${SUBJECTIVE_TRIP_SCORE}점 이상이거나 통증 '아프다' 면 신호`,
   }
 
-  const signals = [recovery, sleep, hrv, restingHr, subjective]
-  const flagCount = signals.filter((s) => s.tripped === true).length
-  const level: Level = flagCount === 0 ? 'good' : flagCount >= 3 ? 'bad' : 'caution'
-  const advice = signals.filter((s) => s.tripped === true).map((s) => SIGNAL_ADVICE[s.key])
+  // ⑥ 아픔 · 부상 — 개수로 세는 동시에, 발열·부상이면 판정 자체를 끌어내린다
+  const flags = answers.illness ?? []
+  const illness: SignalResult = {
+    key: 'illness',
+    tripped: flags.length > 0,
+    value: flags.length ? flags.map((f) => ILLNESS_META[f].label).join(' · ') : '없음',
+    basis: '발열·몸살과 부상은 다른 신호가 다 좋아도 훈련을 멈춘다 (넥 체크)',
+    advice: flags.map((f) => ILLNESS_META[f].advice).join(' ') || undefined,
+  }
 
-  return { level, flagCount, signals, advice }
+  const signals = [recovery, sleep, hrv, restingHr, subjective, illness]
+  const flagCount = signals.filter((s) => s.tripped === true).length
+  const veto = vetoOf(flags)
+  const level: Level = veto ? 'bad' : flagCount === 0 ? 'good' : flagCount >= 3 ? 'bad' : 'caution'
+
+  // 거부권이 걸린 날은 그 이유가 맨 앞에 와야 한다 — 나머지 권고는 그다음 문제다
+  const on = signals.filter((s) => s.tripped === true)
+  const ordered = veto ? [illness, ...on.filter((s) => s.key !== 'illness')] : on
+  const advice = ordered.map((s) => s.advice ?? SIGNAL_ADVICE[s.key])
+
+  return { level, flagCount, veto, signals, advice }
 }
 
 // ── 저장 / 조회 ───────────────────────────────────────────
@@ -355,6 +440,24 @@ export function recoveryHint(checks: BodyCheck[], activities: Activity[], now = 
   if (leftMs <= 0) return null // 회복은 끝났는데 그 뒤로 운동을 했다 — 추측하지 않는다
 
   return { hours: Math.round((leftMs / 3600_000) * 10) / 10, stale, from: last.day }
+}
+
+/**
+ * 감기·부상은 하루로 끝나지 않는다. 지난 판단에서 표시한 게 있으면 켜 둔 채로 시작하되,
+ * **다 나았는지 물어본다** — 조용히 이어받으면 나은 뒤에도 계속 '나쁨' 으로 남는다.
+ * 일주일이 넘었으면 이어받지 않는다 (지난주 감기를 오늘 판정에 끌고 올 이유가 없다).
+ */
+export interface IllnessHint {
+  flags: IllnessFlag[]
+  from: string
+}
+
+export function illnessHint(checks: BodyCheck[], now = new Date()): IllnessHint | null {
+  const last = [...checks].sort((a, b) => b.checked_at.localeCompare(a.checked_at))[0]
+  const flags = last?.answers?.illness ?? []
+  if (!flags.length) return null
+  if (dayjs(now).diff(dayjs(last.checked_at), 'day') > 7) return null
+  return { flags, from: last.day }
 }
 
 /** 날짜별로 찾아 쓰기 좋게 */
