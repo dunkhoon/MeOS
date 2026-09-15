@@ -7562,3 +7562,39 @@ button.st-row:hover .st-row-edit {
 .bc-review-actions .ask-btn {
   margin-right: auto;
 }
+
+/* ── 몸상태 리뷰의 AI 조언 ──────────────────────────────
+   결론 한 줄이 먼저 보이고, 나머지는 눌러서 편다. 며칠 뒤에 열어도 그날 무슨 말을
+   들었는지 이 한 줄로 끝나야 한다. */
+.bc-advice-sec {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.bc-advice-sum {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.bc-advice-full {
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text);
+}
+.bc-advice-full p {
+  margin: 6px 0;
+}
+.bc-advice-meta {
+  margin: 8px 0 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.bc-advice-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  line-height: 1.6;
+}

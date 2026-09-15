@@ -1,15 +1,24 @@
-import { useEffect, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import dayjs from 'dayjs'
 import {
   ILLNESS_META,
   SIGNAL_ADVICE,
   SIGNAL_LABEL,
   SUBJECTIVE_QUESTIONS,
+  adviceBody,
+  adviceSummary,
+  askBodyCheckAdvice,
   faceFor,
+  fetchBodyCheck,
+  isAdviceWaiting,
   type BodyCheck,
   type SignalResult,
 } from '../lib/bodyCheck'
-import { AskButton } from './AskButton'
+import { Markdown } from '../lib/markdown'
+import { errMsg } from '../lib/exercise'
+
+/** 답은 보통 수십 초 뒤에 온다 — 기다리는 동안만 훑는다 (FoodAdvice 와 같은 방식) */
+const POLL_MS = 2500
 
 // 캘린더에 찍히는 몸상태 아이콘과, 그걸 눌렀을 때 뜨는 리뷰.
 //
@@ -51,6 +60,40 @@ export function BodyCheckReview({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // 조언은 답이 늦게 오므로 이 화면이 직접 들고 훑는다. 리뷰를 닫아도 DB 트리거가 채워 두므로
+  // 다시 열면 그대로 있다 (0019).
+  const [row, setRow] = useState<BodyCheck>(check)
+  const [asking, setAsking] = useState(false)
+  const [askErr, setAskErr] = useState<string | null>(null)
+  const [openAdvice, setOpenAdvice] = useState(false)
+  useEffect(() => setRow(check), [check])
+
+  const waiting = isAdviceWaiting(row)
+  useEffect(() => {
+    if (!waiting) return
+    const id = window.setInterval(() => {
+      void fetchBodyCheck(row.day)
+        .then((r) => r && setRow(r))
+        .catch(() => {
+          /* 폴링 실패는 조용히 — 다음 주기에 다시 */
+        })
+    }, POLL_MS)
+    return () => window.clearInterval(id)
+  }, [waiting, row.day])
+
+  async function ask() {
+    setAsking(true)
+    setAskErr(null)
+    try {
+      setRow(await askBodyCheckAdvice(row))
+      setOpenAdvice(true)
+    } catch (e) {
+      setAskErr(errMsg(e))
+    } finally {
+      setAsking(false)
+    }
+  }
 
   const m = faceFor(check.level, check.answers?.illness)
   const signals = (check.signals ?? []) as SignalResult[]
@@ -140,67 +183,60 @@ export function BodyCheckReview({
           {unknown.length > 0 && ` · ${unknown.length}개는 데이터가 없어 판단에서 뺐습니다`}
         </p>
 
-        <div className="modal-actions bc-review-actions">
-          {/* 규칙이 판정하고 AI 는 해설한다 — 메모의 자유문장까지 읽는 건 규칙이 못 하는 일이다.
-              판정·신호·답변·메모를 통째로 실어 보낸다 (BodyCoach 와 같은 방식). */}
-          <AskButton {...askAboutCheck(check)} label="AI 에게 물어보기" />
-          {onRedo && (
+        {/* 규칙이 판정하고 AI 는 해설한다 — 메모의 자유문장을 읽는 건 규칙이 못 하는 일이다.
+            답은 그날 판단에 붙어 남으므로 며칠 뒤에 열어도 무슨 말을 들었는지 보인다. */}
+        <div className="st-sheet-sec bc-advice-sec">
+          <div className="st-sheet-label">AI 조언</div>
+          {row.advice_status === 'done' && row.advice ? (
+            <>
+              <p className="bc-advice-sum">{adviceSummary(row.advice)}</p>
+              {adviceBody(row.advice) &&
+                (openAdvice ? (
+                  <div className="bc-advice-full">
+                    <Markdown text={adviceBody(row.advice)} />
+                  </div>
+                ) : (
+                  <button className="link-btn small" onClick={() => setOpenAdvice(true)}>
+                    전체 보기 ▾
+                  </button>
+                ))}
+              <p className="muted small bc-advice-meta">
+                {row.advice_at ? dayjs(row.advice_at).format('M/D HH:mm') : ''}
+                {row.advice_model ? ` · ${row.advice_model}` : ''}
+                {/* 다시 판단한 뒤라면 이 조언은 옛 판정에 대한 답이다 — 조용히 두면 오해한다 */}
+                {row.advice_at && row.advice_at < row.checked_at && ' · ⚠️ 다시 판단하기 전에 받은 답입니다'}
+                {' · '}
+                <button className="link-btn small" onClick={() => void ask()} disabled={asking}>
+                  다시 묻기
+                </button>
+              </p>
+            </>
+          ) : waiting ? (
+            <p className="muted small bc-advice-wait">
+              <span className="spinner" /> 답을 기다리는 중… 집 PC 의 에이전트가 가져가면 수십 초 안에 옵니다. 닫아도
+              됩니다 — 답은 이 날짜에 남습니다.
+            </p>
+          ) : (
+            <>
+              {row.advice_status === 'error' && (
+                <p className="error small">답을 받지 못했습니다: {row.advice_error ?? '알 수 없는 오류'}</p>
+              )}
+              <button className="ask-btn" onClick={() => void ask()} disabled={asking}>
+                ✦ {asking ? '보내는 중…' : row.advice_status === 'error' ? '다시 물어보기' : 'AI 에게 물어보기'}
+              </button>
+            </>
+          )}
+          {askErr && <p className="error small">{askErr}</p>}
+        </div>
+
+        {onRedo && (
+          <div className="modal-actions">
             <button className="btn-secondary" onClick={onRedo}>
               다시 판단하기
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )
-}
-
-/**
- * 어시스턴트에게 넘길 질문과 맥락.
- *
- * ⚠️ 숫자와 판정은 **여기서 다 계산해서** 넘긴다 (foodAdvice 와 같은 원칙).
- *    에이전트에게 산수를 시키면 같은 날을 두 번 물었을 때 근거가 달라진다.
- *    에이전트가 할 일은 메모의 자유문장을 읽고 "그래서 오늘 뭘 할지" 를 정하는 것이다.
- *
- * ⚠️ **오늘의 증상은 여기 실린 것이 전부라고 못박는다.** 에이전트는 지난 대화와 과거
- *    기록을 같이 보기 때문에, 그냥 물으면 예전 증상을 오늘 것으로 끌어다 쓴다.
- *    실제로 메모에는 "감기 기운" 만 적었는데 **9/14 활동 코멘트에 적혀 있던 "오른쪽 불편감"**
- *    을 근거로 휴식을 권했다(2026-09-15). 없는 증상으로 쉬라는 답은 틀린 답이다.
- *    (대화 자체를 새로 여는 건 Assistant 화면이 맡는다 — 대화마다 에이전트 세션이 갈린다)
- */
-function askAboutCheck(check: BodyCheck) {
-  const signals = (check.signals ?? []) as SignalResult[]
-  const m = faceFor(check.level, check.answers?.illness)
-  const illness = (check.answers?.illness ?? []).map((f) => ILLNESS_META[f].label)
-  const question = [
-    `${dayjs(check.day).format('M월 D일')} 몸상태 판단 결과야. 오늘 훈련을 어떻게 할지(쉴지 / 얼마나 · 어떤 강도로) 알려줘.`,
-    '',
-    '⚠️ 오늘의 증상·통증은 **위 맥락에 적힌 것이 전부다.** 거기 없는 부위나 증상은 없는 것으로 봐라.',
-    '특히 **활동 코멘트(예전 AI 분석)에 적힌 통증·부위는 그날의 것이지 오늘 것이 아니다.**',
-    '지난 대화에서 오갔던 증상도 마찬가지다. 없는 증상을 근거로 쉬라고 하면 틀린 답이다.',
-    'meos_overview 등 도구는 최근 훈련량·부하 흐름을 보는 데만 쓰고, 오늘 증상 판단에는 쓰지 마라.',
-    '숫자는 앱이 이미 계산해 뒀으니 다시 나열하지 말고, 메모 문장을 판정과 함께 해석해서 다음 행동만 말해 줘.',
-  ].join('\n')
-
-  return {
-    question,
-    context: {
-      날짜: check.day,
-      판정: `${m.label} (신호 ${check.flag_count}개)`,
-      신호: signals.map(
-        (s) =>
-          `${SIGNAL_LABEL[s.key]}: ${s.value} — ${s.basis}` +
-          (s.tripped === true ? ' [신호 켜짐]' : s.tripped == null ? ' [판단 불가]' : ''),
-      ),
-      아픔부상: illness.length ? illness : '없음',
-      불편부위: check.answers?.area?.trim() || '없음',
-      // 메모는 손대지 않고 원문 그대로. 오늘 증상의 유일한 출처다.
-      메모_원문_전체: check.note ?? '(메모 없음)',
-      규칙기반권고: trippedAdvice(signals),
-    },
-  }
-}
-
-function trippedAdvice(signals: SignalResult[]): string[] {
-  return signals.filter((s) => s.tripped === true).map((s) => s.advice ?? SIGNAL_ADVICE[s.key])
 }

@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import { supabase } from './supabase'
+import { createThread } from './assistant'
 import type { Activity, Wellness } from './exercise'
 
 // 오늘 훈련해도 되는 몸인가 — 다섯 가지 신호로 따져 본다.
@@ -346,9 +347,22 @@ export interface BodyCheck {
   answers: SubjectiveAnswers
   recovery_until: string | null
   note: string | null
+
+  // ── AI 조언 (0019) — 물어봤으면 그날 판단에 붙어 있다 ──
+  advice: string | null
+  /** null 이면 물어본 적 없음 */
+  advice_status: 'pending' | 'taken' | 'done' | 'error' | null
+  advice_error: string | null
+  advice_model: string | null
+  advice_thread_id: string | null
+  advice_asked_at: string | null
+  advice_at: string | null
 }
 
-const COLS = 'id, day, checked_at, level, flag_count, signals, answers, recovery_until, note'
+// ⚠️ 한 줄짜리 **리터럴**이어야 한다. 이어붙이면(`'a' + 'b'`) supabase-js 가 select 문자열을
+//    타입 수준에서 못 읽어 결과가 GenericStringError 로 떨어진다.
+const COLS =
+  'id, day, checked_at, level, flag_count, signals, answers, recovery_until, note, advice, advice_status, advice_error, advice_model, advice_thread_id, advice_asked_at, advice_at'
 
 /** 마이그레이션 미적용을 알아보기 쉬운 메시지로 (foodAdvice 와 같은 이유). */
 function wrap(error: { message: string; code?: string } | null): void {
@@ -356,6 +370,14 @@ function wrap(error: { message: string; code?: string } | null): void {
   if (error.code === '42P01' || /relation .* does not exist/i.test(error.message)) {
     throw new Error(
       '몸상태 판단 테이블이 없습니다. Supabase SQL 편집기에서 supabase/migrations/0018_body_check.sql 을 실행하세요.',
+    )
+  }
+  // 열이 없다 = 나중에 붙인 마이그레이션이 아직 안 돌았다. 이것도 이름을 대 준다 —
+  // "column body_checks.advice does not exist" 만 보면 뭘 해야 하는지 알 수 없다.
+  if (error.code === '42703' || /column .* does not exist/i.test(error.message)) {
+    throw new Error(
+      `몸상태 판단 테이블이 최신이 아닙니다 (${error.message}). ` +
+        'Supabase SQL 편집기에서 supabase/migrations/0019_body_check_advice.sql 을 실행하세요.',
     )
   }
   throw new Error(error.message)
@@ -458,6 +480,111 @@ export function illnessHint(checks: BodyCheck[], now = new Date()): IllnessHint 
   if (!flags.length) return null
   if (dayjs(now).diff(dayjs(last.checked_at), 'day') > 7) return null
   return { flags, from: last.day }
+}
+
+// ── AI 조언 ───────────────────────────────────────────────
+//
+// 규칙이 판정하고 AI 는 해설한다. 답은 수십 초 뒤에 오므로 **앱이 옮겨 담지 않는다** —
+// 리뷰를 닫아도 트리거가 DB 안에서 `body_checks` 에 채운다 (0019, foodAdvice 와 같은 방식).
+
+export async function fetchBodyCheck(day: string): Promise<BodyCheck | null> {
+  const { data, error } = await supabase.from('body_checks').select(COLS).eq('day', day).maybeSingle()
+  wrap(error)
+  return (data as BodyCheck) ?? null
+}
+
+export function isAdviceWaiting(check: BodyCheck | null): boolean {
+  return check?.advice_status === 'pending' || check?.advice_status === 'taken'
+}
+
+/** 첫 줄만 뽑아 요약으로 쓴다 — 질문에서 "첫 줄에 한 문장 결론" 을 요구해 뒀다 */
+export function adviceSummary(advice: string): string {
+  const first = advice
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0)
+  return (first ?? '').replace(/^#+\s*/, '').replace(/\*\*/g, '').trim()
+}
+
+/** 첫 줄을 뺀 나머지 (없으면 빈 문자열) */
+export function adviceBody(advice: string): string {
+  const lines = advice.replace(/\r?\n/g, '\n').split('\n')
+  const i = lines.findIndex((l) => l.trim().length > 0)
+  return lines.slice(i + 1).join('\n').trim()
+}
+
+/**
+ * 판단 하나를 놓고 에이전트에게 묻는다.
+ *
+ * ⚠️ 질문 하나당 **대화 하나**를 판다. 대화마다 에이전트 세션이 갈리므로(플러그인 inbound.ts)
+ *    옛 대화에 얹으면 지난 맥락을 물려받는다 — 메모에 없던 증상으로 쉬라고 한 적이 있다.
+ *
+ * ⚠️ `context` 는 비운다 (foodAdvice 와 같은 이유). 플러그인이 context JSON 을 질문 앞에 붙이는데,
+ *    아래 질문 글에 같은 내용이 이미 사람이 읽을 형태로 다 들어 있다. 같이 보내면 프롬프트만 두 배가 된다.
+ */
+export async function askBodyCheckAdvice(check: BodyCheck): Promise<BodyCheck> {
+  const question = buildAdviceQuestion(check)
+  const thread = await createThread(`몸상태 조언 · ${dayjs(check.day).format('M/D')}`)
+
+  const { data: msg, error: e1 } = await supabase
+    .from('chat_messages')
+    .insert({ thread_id: thread.id, role: 'user', content: question, status: 'pending' })
+    .select('id')
+    .single()
+  if (e1) throw new Error(e1.message)
+
+  const { data, error } = await supabase
+    .from('body_checks')
+    .update({
+      advice: null,
+      advice_error: null,
+      advice_at: null,
+      advice_model: null,
+      advice_status: 'pending',
+      advice_thread_id: thread.id,
+      advice_message_id: (msg as { id: string }).id,
+      advice_asked_at: new Date().toISOString(),
+    })
+    .eq('id', check.id)
+    .select(COLS)
+    .single()
+  wrap(error)
+  return data as BodyCheck
+}
+
+function buildAdviceQuestion(check: BodyCheck): string {
+  const m = faceFor(check.level, check.answers?.illness)
+  const signals = (check.signals ?? []) as SignalResult[]
+  const illness = (check.answers?.illness ?? []).map((f) => ILLNESS_META[f].label)
+
+  return [
+    `${dayjs(check.day).format('M월 D일 (ddd)')} 몸상태 판단 결과야. 오늘 훈련을 어떻게 할지(쉴지 / 얼마나 · 어떤 강도로) 알려줘.`,
+    '',
+    '## 판정',
+    `${m.label} — 신호 ${check.flag_count}개 · ${m.summary}`,
+    '',
+    '## 신호',
+    ...signals.map(
+      (s) =>
+        `- ${SIGNAL_LABEL[s.key]}: ${s.value} — ${s.basis}` +
+        (s.tripped === true ? ' **[신호 켜짐]**' : s.tripped == null ? ' [판단 불가]' : ''),
+    ),
+    '',
+    '## 오늘 내가 적은 것',
+    `- 아픔·부상: ${illness.length ? illness.join(' · ') : '없음'}`,
+    `- 불편한 부위: ${check.answers?.area?.trim() || '없음'}`,
+    `- 메모(원문 그대로): ${check.note ?? '(없음)'}`,
+    '',
+    '## 지켜 줘',
+    '- 오늘의 증상·통증은 **위에 적힌 것이 전부다.** 거기 없는 부위나 증상은 없는 것으로 봐라.',
+    '- 특히 **활동 코멘트(예전 AI 분석)에 적힌 통증·부위는 그날의 것이지 오늘 것이 아니다.** 지난 대화도 마찬가지다.',
+    '- meos_* 도구는 최근 훈련량·부하 흐름을 보는 데만 쓰고, 오늘 증상 판단에는 쓰지 마라.',
+    '- 위 숫자는 앱이 이미 계산해 둔 것이니 다시 나열하지 말고, 메모 문장을 판정과 함께 해석해서 다음 행동만.',
+    '',
+    '## 형식 (앱이 첫 줄만 요약으로 보여 준다)',
+    '- **첫 줄에 한 문장으로 결론**만 써라 — 예: "오늘은 쉰다", "이지 40분까지만".',
+    '- 그다음 줄부터 이유와 주의점을 2~4문장으로. 전체가 여섯 문장을 넘지 않게.',
+  ].join('\n')
 }
 
 /** 날짜별로 찾아 쓰기 좋게 */
