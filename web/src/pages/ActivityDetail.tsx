@@ -52,6 +52,12 @@ import { AskButton } from '../components/AskButton'
  * 지금 보고 있는 훈련이 아닌 엉뚱한 것에 코멘트를 올릴 수 있다.
  * 날짜·이름도 같이 줘서 사람이 봐도 어느 훈련인지 알아보게 한다.
  */
+/** 분석 요청 전에 뜨는 칸의 안내 — 버튼이 두 군데라 문구를 한 곳에 둔다 */
+const ASK_COMPOSE = {
+  composeHint: '이 훈련에서 따로 궁금한 게 있으면 적어 주세요. 비워 두면 기본 분석만 받습니다.',
+  placeholder: '예: 후반에 페이스가 무너진 게 더위 때문일까? / 다음 주 대회 전에 이 정도 강도면 괜찮아?',
+}
+
 function askAboutActivity(a: { external_id: string; name: string | null; type: string | null; start_date_local: string | null }) {
   const when = a.start_date_local ? dayjs(a.start_date_local).format('YYYY년 M월 D일 (ddd) HH:mm') : ''
   const what = [when, a.name].filter(Boolean).join(' ')
@@ -352,7 +358,7 @@ export default function ActivityDetail() {
             {act?.device_name ? ` · ${act.device_name}` : ''}
           </p>
         </div>
-        {act && <AskButton {...askAboutActivity(act)} label="AI 분석 요청" />}
+        {act && <AskButton {...askAboutActivity(act)} label="AI 분석 요청" compose {...ASK_COMPOSE} />}
       </header>
 
       {err && <div className="sync-msg err">{err}</div>}
@@ -445,7 +451,7 @@ export default function ActivityDetail() {
                   이 훈련을 분석해 여기에 남깁니다. 집 PC 의 OpenClaw 가 답하며, 몇 십 초 걸립니다.
                 </p>
               </div>
-              <AskButton {...askAboutActivity(act)} label="AI 분석 요청" />
+              <AskButton {...askAboutActivity(act)} label="AI 분석 요청" compose {...ASK_COMPOSE} />
             </div>
           )}
           {notes.map((n) => (

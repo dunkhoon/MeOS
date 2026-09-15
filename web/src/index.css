@@ -7598,3 +7598,26 @@ button.st-row:hover .st-row-edit {
   margin: 0;
   line-height: 1.6;
 }
+
+/* 물어보기 전에 뜨는 추가 질문 칸 */
+.ask-compose textarea {
+  width: 100%;
+  margin-top: 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+.ask-compose textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.ask-compose-tip {
+  margin: 10px 0 0;
+  text-align: right;
+}
