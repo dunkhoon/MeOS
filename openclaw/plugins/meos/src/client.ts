@@ -19,6 +19,20 @@ export type MeosPendingMessage = {
   history: { role: "user" | "assistant"; content: string }[];
 };
 
+/**
+ * HTTP 로 거절당한 경우. 상태 코드를 **속성으로** 들고 있어야 부르는 쪽이 판단할 수 있다.
+ * 메시지 문자열을 정규식으로 긁어 상태 코드를 알아내는 방식은 문구만 바뀌어도 조용히 깨진다.
+ */
+export class MeosHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "MeosHttpError";
+  }
+}
+
 async function call(
   account: MeosAccount,
   init: { method: "GET" | "POST"; query?: Record<string, string>; body?: unknown },
@@ -52,9 +66,10 @@ async function call(
       (typeof parsed?.message === "string" && parsed.message) ||
       "";
     const code = typeof parsed?.code === "string" ? ` code=${parsed.code}` : "";
-    throw new Error(
+    throw new MeosHttpError(
       `meos: HTTP ${res.status}${code}${detail ? ` — ${detail}` : ""} @ ${url.pathname}${url.search}` +
         (detail ? "" : ` body=${text.slice(0, 300)}`),
+      res.status,
     );
   }
   if (!parsed) throw new Error(`meos: 응답이 JSON 이 아닙니다 (HTTP ${res.status}): ${text.slice(0, 300)}`);

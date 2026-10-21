@@ -1,6 +1,18 @@
 // MeOS Edge Function `chat` 클라이언트.
 //
 // 이 플러그인이 바깥으로 나가는 유일한 통로다. 집 PC 로 들어오는 연결은 없다.
+/**
+ * HTTP 로 거절당한 경우. 상태 코드를 **속성으로** 들고 있어야 부르는 쪽이 판단할 수 있다.
+ * 메시지 문자열을 정규식으로 긁어 상태 코드를 알아내는 방식은 문구만 바뀌어도 조용히 깨진다.
+ */
+export class MeosHttpError extends Error {
+    status;
+    constructor(message, status) {
+        super(message);
+        this.status = status;
+        this.name = "MeosHttpError";
+    }
+}
 async function call(account, init) {
     const url = new URL(account.baseUrl);
     for (const [k, v] of Object.entries(init.query ?? {}))
@@ -29,8 +41,8 @@ async function call(account, init) {
             (typeof parsed?.message === "string" && parsed.message) ||
             "";
         const code = typeof parsed?.code === "string" ? ` code=${parsed.code}` : "";
-        throw new Error(`meos: HTTP ${res.status}${code}${detail ? ` — ${detail}` : ""} @ ${url.pathname}${url.search}` +
-            (detail ? "" : ` body=${text.slice(0, 300)}`));
+        throw new MeosHttpError(`meos: HTTP ${res.status}${code}${detail ? ` — ${detail}` : ""} @ ${url.pathname}${url.search}` +
+            (detail ? "" : ` body=${text.slice(0, 300)}`), res.status);
     }
     if (!parsed)
         throw new Error(`meos: 응답이 JSON 이 아닙니다 (HTTP ${res.status}): ${text.slice(0, 300)}`);
