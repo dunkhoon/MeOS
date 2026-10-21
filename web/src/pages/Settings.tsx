@@ -280,6 +280,7 @@ function P4Setting() {
       setWorkspace(c.workspace)
       setUserName(c.userName)
       setModel(c.model)
+      setModels(c.models ?? [])
       setSendDiff(c.sendDiff)
       setLlmBaseUrl(c.llmBaseUrl)
     })
@@ -433,13 +434,17 @@ function P4Setting() {
           placeholder={cfg?.hasLlmKey ? '••••••••' : '.env.local 의 LOCAL_LLM_API_KEY 를 써도 됩니다'}
         />
 
-        <label>모델</label>
+        <label>사내 LLM 모델</label>
         <div className="p4-ws-tools">
-          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="deepseek-v4-flash-m5max" />
+          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder={cfg?.defaultModel || 'AquaLLM'} />
           <button type="button" className="ghost-btn small-btn" onClick={() => void loadModels()} disabled={busy}>
             모델 목록
           </button>
         </div>
+        <p className="muted small">
+          비워 두면 <b>{cfg?.defaultModel || 'AquaLLM'}</b> 라우터를 씁니다. 라우터가 질문에 맞는 모델을 안에서
+          골라 주므로 작업마다 따로 지정할 필요가 없습니다. 특정 모델을 쓰고 싶을 때만 적으세요.
+        </p>
         {models.length > 0 && (
           <div className="p4-ws-list">
             {models.map((m) => (
@@ -634,6 +639,10 @@ function ReviewSetting() {
         <button className="sc-add-inline" onClick={add}>
           ＋ 리뷰 모델 추가
         </button>
+        <p className="muted small">
+          사내 리뷰는 <b>{cfg.localModel}</b> 라우터를 씁니다. 모델을 비워 두면 라우터가 질문에 맞는 모델을
+          골라 줍니다.
+        </p>
 
         <p className="muted small">
           <b>사내</b> = 코드가 사내망 밖으로 나가지 않습니다. <b>사외</b> = Codex/Claude 서비스로 코드가 전송됩니다 —

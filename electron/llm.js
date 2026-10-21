@@ -8,6 +8,29 @@
 const http = require('node:http')
 const https = require('node:https')
 
+// ── 모델: 라우터 한 개로 충분하다 ──────────────────────────
+//
+// 사내 LLM 은 2026-10 에 **AquaLLM 라우터**로 바뀌었다. 모델 이름 하나(`AquaLLM`)를 보내면
+// 라우터가 질문에 맞는 모델을 안에서 고른다. 그래서 작업별로 모델을 따로 지정할 이유가 없다.
+//
+// ⚠️ 모델 이름을 코드에 박아 두면 반드시 낡는다. 실제로 그랬다 — 예전 기본값
+//    `deepseek-v4-flash-m5max` 도, 그 뒤 잠깐 쓰던 `glm-5.3-flash`·`qwen3.8-flash-next` 도
+//    지금 서버 목록에 없다. 없는 이름으로 부르면 그대로 실패한다.
+//    그래서 박아 두는 이름은 **라우터 하나**뿐이고, 나머지는 설정 화면이 서버에서 받아 온다.
+const ROUTER_MODEL = 'AquaLLM'
+
+/** 더 이상 서버에 없는 이름들. 설정에 남아 있으면 라우터로 돌린다. */
+const RETIRED_MODELS = ['deepseek-v4-flash-m5max', 'glm-5.3-flash', 'qwen3.8-flash-next']
+
+/**
+ * 쓸 모델 이름을 정한다. 비어 있거나 폐기된 이름이면 라우터를 쓴다.
+ * 사용자가 서버에 있는 특정 모델을 일부러 적어 두었다면 그대로 존중한다.
+ */
+function resolveLocalModel(model) {
+  const value = String(model || '').trim()
+  return !value || RETIRED_MODELS.includes(value) ? ROUTER_MODEL : value
+}
+
 /** 연결 자체가 안 된 경우 (이 PC 는 임시 포트가 자주 고갈된다 — p4.js 주석 참고). */
 function isConnectFailure(e) {
   const code = (e && e.code) || ''
@@ -106,8 +129,20 @@ async function listModels(cfg) {
   return (json.data || []).map((m) => m.id).filter(Boolean).sort()
 }
 
-/** 채팅 1회. jsonMode 를 켜면 JSON 만 나오도록 강제한다. */
-async function chat(cfg, { model, messages, maxTokens = 1200, jsonMode = false, timeoutMs }) {
+/**
+ * 채팅 1회. jsonMode 를 켜면 JSON 만 나오도록 강제한다.
+ *
+ * ⚠️ **추론 토큰이 `max_tokens` 를 같이 먹는다.** 라우터가 추론 모델로 보내기 때문이다.
+ *    추론만으로 한도를 다 쓰면 **내용이 빈 채로 성공 응답**이 온다 — 오류가 아니라서
+ *    화면에는 "리뷰 결과 없음" 정도로만 보이고 원인을 짐작할 수 없다.
+ *
+ * ⚠️ 그래서 `reasoning_effort: 'low'` 를 기본으로 보낸다. 2026-10 실측(코드 리뷰 한 건):
+ *      effort 없음 · 한도 16000 → 추론 15,436 토큰, **192초**, 그러고도 잘림
+ *      effort low  · 한도  8000 → 추론    643 토큰, **14초**, 3,322자 정상
+ *    한도만 올려서는 해결되지 않는다. 추론이 한도를 따라 늘어나기 때문이다.
+ *    이 옵션은 라우터가 아닌 개별 모델(qwen3.8-27b·deepseek-v4.1-flash)에서도 안전하다(실측).
+ */
+async function chat(cfg, { model, messages, maxTokens = 1200, jsonMode = false, timeoutMs, reasoningEffort = 'low' }) {
   const json = await request(`${base(cfg)}/chat/completions`, {
     method: 'POST',
     headers: auth(cfg),
@@ -116,14 +151,30 @@ async function chat(cfg, { model, messages, maxTokens = 1200, jsonMode = false, 
       model,
       messages,
       max_tokens: maxTokens,
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
     },
   })
   const choice = (json.choices || [])[0]
   if (!choice) throw new Error('LLM 응답에 결과가 없습니다.')
+  const content = (choice.message && choice.message.content) || ''
+  const finishReason = choice.finish_reason || null
+
+  // 조용한 실패를 막는다 — 빈 답은 성공처럼 돌아오므로 여기서 잡아 이유를 말해 준다.
+  if (!content.trim()) {
+    const reasoning = json.usage && json.usage.completion_tokens_details
+      ? json.usage.completion_tokens_details.reasoning_tokens
+      : null
+    const why =
+      finishReason === 'length'
+        ? `출력 한도(${maxTokens})를 추론에 다 썼습니다${reasoning ? ` (추론 ${reasoning} 토큰)` : ''}. 한도를 늘리거나 입력을 줄여 보세요.`
+        : `모델이 빈 답을 돌려주었습니다 (finish_reason=${finishReason || '알 수 없음'}).`
+    throw new Error(`LLM 이 답을 만들지 못했습니다 — ${why}`)
+  }
+
   return {
-    content: (choice.message && choice.message.content) || '',
-    finishReason: choice.finish_reason || null,
+    content,
+    finishReason,
     usage: json.usage || null,
     model: json.model || model,
   }
@@ -342,6 +393,9 @@ async function writeSubmitLog(cfg, input) {
 }
 
 module.exports = {
+  ROUTER_MODEL,
+  RETIRED_MODELS,
+  resolveLocalModel,
   request,
   listModels,
   chat,

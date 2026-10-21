@@ -46,8 +46,10 @@ const KINDS = {
     cli: null,
     efforts: [],
     defaultEffort: '',
-    models: [],
-    note: '사내망(llm.aquatree.games) 안에서 처리되어 코드가 회사 밖으로 나가지 않습니다.',
+    // 라우터 하나만 보여 준다. 다른 모델을 직접 고르고 싶으면 설정의 '모델 목록' 버튼이
+    // 서버에서 받아 온다 — 여기에 이름을 박아 두면 서버가 모델을 갈 때마다 낡는다.
+    models: [llm.ROUTER_MODEL],
+    note: '사내망(llm.aquatree.games)의 AquaLLM 라우터가 질문에 맞는 모델을 골라 줍니다. 코드가 회사 밖으로 나가지 않습니다.',
   },
 }
 
@@ -481,7 +483,10 @@ async function runClaude(prompt, { exe, model, effort, timeoutMs, cwd, onChild }
 }
 
 /** 사내 LLM (OpenAI 호환). 코드가 사외로 나가지 않는 유일한 경로다. */
-async function runLocal(prompt, { llmCfg, model, timeoutMs, maxTokens = 4000 }) {
+// ⚠️ 한도를 넉넉히 잡는다. 추론 토큰이 이 한도를 같이 먹기 때문이다(llm.js 의 chat 주석 참고).
+//    실측: effort=low 로도 추론에 643~1,099 토큰이 나간다. 4000 이던 시절엔 추론만으로
+//    한도를 다 써 **빈 리뷰**가 조용히 돌아왔다.
+async function runLocal(prompt, { llmCfg, model, timeoutMs, maxTokens = 8000 }) {
   const res = await llm.chat(llmCfg, {
     model,
     maxTokens,

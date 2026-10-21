@@ -67,6 +67,8 @@ interface P4Config {
   /** 서밋 로그 맨 앞 [이름] */
   userName: string
   model: string
+  models: string[]
+  defaultModel: string
   sendDiff: boolean
   maxDiffChars: number
   llmBaseUrl: string

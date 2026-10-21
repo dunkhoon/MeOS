@@ -499,7 +499,7 @@ function resolveP4Config() {
     workspace: saved.workspace || env.P4WORKSPACE || '',
     // 서밋 로그 맨 앞 [이름] — 과거 서밋에서 내 것을 골라낼 때도 이 값을 쓴다
     userName: saved.userName || env.P4_USER_NAME || '',
-    model: saved.model || 'deepseek-v4-flash-m5max',
+    model: llm.resolveLocalModel(saved.model),
     sendDiff: saved.sendDiff !== false, // 기본 켜짐 (사내망이라 안전)
     maxDiffChars: Number(saved.maxDiffChars) || 60000,
     llm: {
@@ -523,6 +523,8 @@ ipcMain.handle('p4:getConfig', () => {
     workspace: cfg.workspace,
     userName: cfg.userName,
     model: cfg.model,
+    models: [llm.ROUTER_MODEL],
+    defaultModel: llm.ROUTER_MODEL,
     sendDiff: cfg.sendDiff,
     maxDiffChars: cfg.maxDiffChars,
     llmBaseUrl: cfg.llm.baseUrl,
@@ -543,7 +545,7 @@ ipcMain.handle('p4:setConfig', (_e, cfg) => {
     user: (cfg.user || '').trim(),
     workspace: (cfg.workspace || '').trim(),
     userName: (cfg.userName || '').trim(),
-    model: (cfg.model || '').trim() || 'deepseek-v4-flash-m5max',
+    model: llm.resolveLocalModel(cfg.model),
     sendDiff: cfg.sendDiff !== false,
     maxDiffChars: Number(cfg.maxDiffChars) || 60000,
     llmBaseUrl: (cfg.llmBaseUrl || '').trim(),
@@ -705,7 +707,18 @@ function codexDefaultModel() {
   }
 }
 
-const DEFAULT_REVIEWERS = [{ id: 'local-1', kind: 'local', model: '', effort: '', enabled: true }]
+const DEFAULT_REVIEWERS = [{ id: 'local-1', kind: 'local', model: llm.ROUTER_MODEL, effort: '', enabled: true }]
+
+function normalizeReviewer(r, i) {
+  const kind = review.KINDS[r.kind] ? r.kind : 'local'
+  return {
+    id: String(r.id || `r${i + 1}`),
+    kind,
+    model: kind === 'local' ? llm.resolveLocalModel(r.model) : String(r.model || '').trim(),
+    effort: String(r.effort || '').trim(),
+    enabled: r.enabled !== false,
+  }
+}
 
 function resolveReviewConfig() {
   const saved = readJson(reviewCfgPath(), {})
@@ -719,15 +732,9 @@ function resolveReviewConfig() {
     maxDiffChars: Number(saved.maxDiffChars) || 120000,
     timeoutMin: Math.min(60, Math.max(1, Number(saved.timeoutMin) || 15)),
     includeNewFiles: saved.includeNewFiles !== false,
-    reviewers: list.map((r, i) => ({
-      id: String(r.id || `r${i + 1}`),
-      kind: review.KINDS[r.kind] ? r.kind : 'local',
-      model: String(r.model || '').trim(),
-      effort: String(r.effort || '').trim(),
-      enabled: r.enabled !== false,
-    })),
-    // 사내 LLM 리뷰어는 모델을 안 고르면 Perforce 설정의 모델을 그대로 쓴다
-    localModel: p4cfg.model,
+    reviewers: list.map(normalizeReviewer),
+    // 라우터가 안에서 모델을 고르므로 작업별로 나눌 이유가 없다 — 리뷰도 CL 설명도 같은 이름을 쓴다.
+    localModel: llm.ROUTER_MODEL,
     llm: p4cfg.llm,
   }
 }
@@ -765,13 +772,7 @@ ipcMain.handle('review:getConfig', () => {
 
 ipcMain.handle('review:setConfig', (_e, cfg) => {
   if (!cfg || typeof cfg !== 'object') return { ok: false, error: '잘못된 설정' }
-  const reviewers = (Array.isArray(cfg.reviewers) ? cfg.reviewers : []).map((r, i) => ({
-    id: String(r.id || `r${i + 1}`),
-    kind: review.KINDS[r.kind] ? r.kind : 'local',
-    model: String(r.model || '').trim(),
-    effort: String(r.effort || '').trim(),
-    enabled: r.enabled !== false,
-  }))
+  const reviewers = (Array.isArray(cfg.reviewers) ? cfg.reviewers : []).map(normalizeReviewer)
   writeJson(reviewCfgPath(), {
     dir: (cfg.dir || '').trim(),
     codexPath: (cfg.codexPath || '').trim(),
